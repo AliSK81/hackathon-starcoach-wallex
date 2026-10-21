@@ -5,6 +5,8 @@ The system is an automated trading engine on Wallex that receives and analyzes m
 **Infrastructure**
 - Wallex MCP — connects AI agents to Wallex capabilities.
 - Wallex API — market data, order placement, order checks, trade management.
+- API documentation: https://developers.wallex.ir/docs
+
 AI models, Agentic AI frameworks, data analysis tools, and any strategy design are permitted; architecture, decision model, and risk method are the team's choice. All evaluated trades are algorithmic; manual trades are invalid.
 
 **Hard Constraints (violation → performance removed from evaluation)**
