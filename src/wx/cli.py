@@ -5,6 +5,7 @@ from wx import __version__
 from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
 from wx.config import KEYS, Settings
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
+from wx.prices import watch
 from wx.wallex import WallexError, fetch_markets
 
 DATA_DIR = Path("data")
@@ -40,16 +41,24 @@ def run_markets() -> int:
     return 0
 
 
-def run_candles(symbols: list[str], days: int) -> int:
+def check_symbols(symbols: list[str]) -> list[str] | None:
+    """The symbols in upper case (default list if empty), or None if any is refused."""
     symbols = [s.upper() for s in symbols] or list(DEFAULT_SYMBOLS)
     try:
         allowed = allowed_markets(fetch_markets(), load_inactive())
     except WallexError as error:
         print(f"Could not read markets: {error}")
-        return 1
+        return None
     refused = [s for s in symbols if s not in allowed]
     if refused:
         print(f"Not allowed or not on Wallex: {', '.join(refused)}")
+        return None
+    return symbols
+
+
+def run_candles(symbols: list[str], days: int) -> int:
+    symbols = check_symbols(symbols)
+    if symbols is None:
         return 1
     failed = 0
     for symbol in symbols:
@@ -64,6 +73,18 @@ def run_candles(symbols: list[str], days: int) -> int:
     return 1 if failed else 0
 
 
+def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
+    symbols = check_symbols(symbols)
+    if symbols is None:
+        return 1
+    print(f"Watching {' '.join(symbols)} every {interval} s. Log: {DATA_DIR / 'prices'}. Ctrl+C stops.")
+    try:
+        watch(symbols, DATA_DIR, interval, cycles)
+    except KeyboardInterrupt:
+        print("Stopped.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wx", description="Wallex trading bot.")
     parser.add_argument("--version", action="version", version=f"wx {__version__}")
@@ -72,11 +93,17 @@ def main(argv: list[str] | None = None) -> int:
     candles = commands.add_parser("candles", help="save 1-minute and 1-hour candles")
     candles.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     candles.add_argument("--days", type=int, default=30, help="how far back on the first run (default 30)")
+    watcher = commands.add_parser("watch", help="read live prices on a fixed beat and log them")
+    watcher.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")
+    watcher.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
     args = parser.parse_args(argv)
     if args.command == "markets":
         return run_markets()
     if args.command == "candles":
         return run_candles(args.symbols, args.days)
+    if args.command == "watch":
+        return run_watch(args.symbols, args.interval, args.cycles)
     print(status(Settings.load()))
     return 0
 

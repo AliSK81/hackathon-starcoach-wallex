@@ -132,3 +132,31 @@ Not done yet:
 
 Next change idea:
 - A loop that reads live prices for the default markets every minute, logs them, and survives network errors.
+
+### Change 4 — `wx watch` logs live prices every minute and survives errors — 2026-10-22
+Phase: 1, step 3
+How to see it: `uv run wx watch` (Ctrl+C stops it), or `uv run wx watch --cycles 3`
+Proof it works:
+- Live: `uv run wx watch --cycles 3` logged 6 prices in each of 3 cycles and exited with 0. Cycles 2 and 3 started exactly on the minute.
+- Network down: with a proxy that refuses connections, 2 cycles each logged the error for every market, and the loop ended normally.
+- `uv run pytest` passed 19 tests, with no internet.
+
+Research: research file 05, sections 1 and 9. `/v1/depth` needs no key. Its prices are JSON numbers, not strings.
+Questions: none
+Decisions: D13.
+
+Shipped:
+- `fetch_best_prices` in `src/wx/wallex.py`: best bid and ask from the order book, as exact decimals.
+- `src/wx/prices.py`: one cycle reads every market, then logs bid, ask, mid and spread to `data/prices/<UTC date>.jsonl`. A failed market or a failed cycle is logged and the loop goes on.
+- `wx watch [SYMBOL ...] [--interval 60] [--cycles N]`.
+- `wx candles` and `wx watch` share one allowed-market check.
+- `tests/test_prices.py`: 4 tests.
+
+Not done yet:
+- At start, `wx watch` needs Wallex to check the markets. If Wallex is down then, it exits with 1. After that it survives errors.
+- Ctrl+C is handled in the code but was not tested by hand.
+- No retry inside a cycle. A failed market waits for the next minute.
+- Nothing keeps it running after a crash or a reboot.
+
+Next change idea:
+- Use the key: read balances and fees, and write them in DECISIONS.md. This is the last Phase 1 item.

@@ -5,6 +5,7 @@ Uses only the standard library. Proxy settings come from the environment.
 
 import json
 import urllib.error
+from decimal import Decimal
 import urllib.parse
 import urllib.request
 
@@ -56,3 +57,17 @@ def fetch_candles(symbol: str, resolution: str, start: int, end: int) -> list[li
         raise WallexError(f"candles {symbol} {resolution}: {body}")
     columns = [body[k] for k in ("o", "h", "l", "c", "v")]
     return [[int(t), *values] for t, *values in zip(body["t"], *columns)]
+
+
+def fetch_best_prices(symbol: str) -> tuple[Decimal, Decimal]:
+    """Best bid and best ask from the order book.
+
+    The book sends prices as JSON numbers. str() of the float gives back the
+    short form Wallex sent, so the Decimal is exact.
+    """
+    book = get_json("/v1/depth", {"symbol": symbol})
+    bids = [Decimal(str(level["price"])) for level in book.get("bid") or []]
+    asks = [Decimal(str(level["price"])) for level in book.get("ask") or []]
+    if not bids or not asks:
+        raise WallexError(f"order book for {symbol} is empty on one side")
+    return max(bids), min(asks)
