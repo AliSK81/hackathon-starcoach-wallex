@@ -56,18 +56,28 @@ def windows(start: int, end: int, span: int) -> list[tuple[int, int]]:
 def update_candles(symbol: str, size: str, data_dir: Path, days: int, now: int | None = None) -> int:
     """Fetch new candles and add them to the file. Returns how many are new.
 
-    Starts after the last saved candle, or `days` back if the file is empty.
-    Windows go oldest first. If one fails, the candles so far are saved and
-    the error is raised, so the next run continues from there.
+    Gets everything from `days` back up to now that the file doesn't have:
+    - new candles after the last saved one, oldest first;
+    - older candles before the first saved one (back-fill), newest first.
+    Both orders keep the file without holes. If a request fails, the candles
+    so far are saved and the error is raised, so the next run continues.
+    If Wallex has no data that far back, each run asks for it again.
     """
     resolution, seconds = SIZES[size]
     now = now or int(time.time())
     path = candle_path(data_dir, symbol, size)
     candles = load_candles(path)
     before = len(candles)
-    start = max(candles) if candles else now - days * 86400
+    span = CANDLES_PER_REQUEST * seconds
+    want_from = now - days * 86400
+    if candles:
+        todo = windows(max(candles), now, span)
+        if want_from < min(candles):
+            todo += windows(want_from, min(candles), span)[::-1]
+    else:
+        todo = windows(want_from, now, span)
     try:
-        for i, (a, b) in enumerate(windows(start, now, CANDLES_PER_REQUEST * seconds)):
+        for i, (a, b) in enumerate(todo):
             if i:
                 time.sleep(PAUSE)
             for row in fetch_candles(symbol, resolution, a, b):

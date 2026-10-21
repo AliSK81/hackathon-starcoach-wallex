@@ -22,7 +22,7 @@ Update this after every change.
 | AI provider, model, URL, and key in `.env` | Phase 2 | In `.env`. Not tested yet. |
 | A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
 | Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
-| Which account is the competition account | Phase 4 | Unknown |
+| Which account is the competition account | Phase 4 | Done: the account behind `WALLEX_API_KEY` (D14). |
 
 ## How to work on the next change
 
@@ -211,6 +211,27 @@ Shipped:
 Not done yet:
 - The rules are not confirmed by a real order. That comes in Phase 4.
 - We don't know if SOLTMN, XRPTMN and PEPETMN accept MARKET orders. A stop-loss there may need a LIMIT order priced to fill at once.
+
+Next change idea:
+- Phase 2 plan. Then test the AI settings in `.env` with one small call.
+
+### Change 7 — `wx candles` keeps 120 days and back-fills older history — 2026-10-22
+Phase: 1, follow-up (asked by the team)
+How to see it: `uv run wx candles`
+Proof it works: one run back-filled about 129,570 1-minute and 2,159 1-hour candles per market in 7 min 41 s. Now every market has 120.0 days: 1-minute data from 2026-06-23 and 1-hour data from 2026-06-24, up to 2026-10-21. `uv run pytest` passed 34 tests.
+
+Data check: the 90 older days added no gaps. Missing 1-minute candles are 0.06–0.07% per market (mostly the 80-minute outage on 2026-09-22). USDTTMN misses 0.65%, mostly 2 long gaps in October. Files take 52 MB in `data/candles/`.
+Research: none new.
+Questions: is the balance for the competition? -> yes (D14).
+Decisions: D14, D15.
+
+Shipped:
+- `update_candles` now also back-fills: if `--days` reaches before the first saved candle, it fetches that part, newest first. A failure leaves no hole, and the next run goes on.
+- `--days` default is 120, not 30.
+- 2 new tests in `tests/test_candles.py`.
+
+Not done yet:
+- If Wallex has no data as far back as `--days`, each run asks again for that empty part. This doesn't happen at 120 days.
 
 Next change idea:
 - Phase 2 plan. Then test the AI settings in `.env` with one small call.

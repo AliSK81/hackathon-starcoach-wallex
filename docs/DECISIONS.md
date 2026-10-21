@@ -23,6 +23,8 @@ This file lists decisions we already made, and facts we checked.
 | D11 | The forbidden-market list lives in the code: [inactive_markets.txt](../src/wx/inactive_markets.txt). Saved Wallex data goes in `data/`, which git ignores. HTTP uses the Python standard library until we need more. | 2026-10-22 | Claude |
 | D12 | Default markets for data: BTCTMN, ETHTMN, SOLTMN, XRPTMN, PEPETMN, USDTTMN (liquid and allowed, from research file 05). Candles are saved as CSV in `data/candles/<SYMBOL>_<1m or 1h>.csv`. Columns `t,o,h,l,c,v`. `t` is Unix seconds (UTC). Values stay as Wallex sends them. Gaps are kept, not filled. | 2026-10-22 | Claude |
 | D13 | Live prices come from `/v1/depth` (best bid and ask), not from `/v1/markets` stats, which can be stale. The price log is `data/prices/<UTC date>.jsonl`, one line per cycle, with `time`, `cycle`, `prices` and `errors`. A loop never stops because of an error. It logs the error and waits for the next beat. | 2026-10-22 | Claude |
+| D14 | The account behind `WALLEX_API_KEY` is the competition account. It started with 5,000,000 TMN (F2). | 2026-10-22 | team |
+| D15 | Keep 120 days of candles (`wx candles` default). Wallex has at least that much (change 7). | 2026-10-22 | team |
 
 ## Checked facts
 
@@ -65,6 +67,5 @@ Check each of these when a change needs it:
 - The longest allowed `client_id`, and which characters it may use.
 - Request limits when using our key, for the API and for the MCP server.
 - Does a trading key need a fixed IP address?
-- Is the competition account a sub-account with its own key?
 
 Sources: [research/05](research/05-wallex-api-integration.md) and [research/00-index](research/00-index.md).

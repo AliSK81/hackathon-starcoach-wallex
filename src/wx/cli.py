@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("markets", help="list allowed markets and save a snapshot")
     candles = commands.add_parser("candles", help="save 1-minute and 1-hour candles")
     candles.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    candles.add_argument("--days", type=int, default=30, help="how far back on the first run (default 30)")
+    candles.add_argument("--days", type=int, default=120, help="how far back to keep (default 120)")
     watcher = commands.add_parser("watch", help="read live prices on a fixed beat and log them")
     watcher.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")

@@ -22,7 +22,7 @@ This reads all Wallex markets, shows how many we may trade, and saves a copy in 
 uv run wx candles
 ```
 
-This saves 1-minute and 1-hour candles for six markets in `data/candles/`. The first run gets 30 days. Later runs add only new candles. It needs no key.
+This saves 1-minute and 1-hour candles for six markets in `data/candles/`. It keeps the last 120 days (`--days` changes this). Later runs add only what is missing. It needs no key.
 
 ```bash
 uv run wx watch

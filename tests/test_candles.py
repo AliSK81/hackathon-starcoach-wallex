@@ -61,6 +61,34 @@ def test_failure_keeps_candles_so_far(tmp_path, monkeypatch):
     assert min(saved) <= NOW - DAY
 
 
+def test_more_days_back_fills_older_candles(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(candles, "fetch_candles", fake_wallex(calls))
+    update_candles("BTCTMN", "1m", tmp_path, days=1, now=NOW)
+    calls.clear()
+    added = update_candles("BTCTMN", "1m", tmp_path, days=2, now=NOW)
+    saved = load_candles(candle_path(tmp_path, "BTCTMN", "1m"))
+    assert added == 1440
+    assert min(saved) == NOW - 2 * DAY
+    assert list(saved) == sorted(saved) and len(saved) == 2 * 1440 + 1  # no holes
+    assert [a for a, b in calls] == [NOW - DAY - 43200, NOW - 2 * DAY]  # newest first
+
+
+def test_failed_back_fill_leaves_no_hole_and_continues(tmp_path, monkeypatch):
+    monkeypatch.setattr(candles, "fetch_candles", fake_wallex([]))
+    update_candles("BTCTMN", "1m", tmp_path, days=1, now=NOW)
+    # Nothing new forward. The first back-fill window works, the second fails.
+    monkeypatch.setattr(candles, "fetch_candles", fake_wallex([], fail_after=1))
+    with pytest.raises(WallexError):
+        update_candles("BTCTMN", "1m", tmp_path, days=2, now=NOW)
+    saved = sorted(load_candles(candle_path(tmp_path, "BTCTMN", "1m")))
+    assert all(b - a == 60 for a, b in zip(saved, saved[1:]))
+    assert saved[0] == NOW - DAY - 43200
+    monkeypatch.setattr(candles, "fetch_candles", fake_wallex([]))
+    update_candles("BTCTMN", "1m", tmp_path, days=2, now=NOW)
+    assert min(load_candles(candle_path(tmp_path, "BTCTMN", "1m"))) == NOW - 2 * DAY
+
+
 def test_candles_command_refuses_forbidden_symbol(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "fetch_markets", lambda: {"BTCTMN": {}, "TONTMN": {}})
     monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
