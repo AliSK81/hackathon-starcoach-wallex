@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 0, not started
+- **Current phase:** 1, not started
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -58,4 +58,25 @@ Next change idea:
 
 ## Entries
 
-_None yet. Phase 0 has not started._
+### Change 1 — Python project that runs with one command — 2026-10-22
+Phase: 0, whole phase
+How to see it: `uv run wx`
+Proof it works: `uv run wx` printed the version and "missing" for all four keys, and exited with 0. With `WALLEX_API_KEY=dummy` it printed "set" and not the value. `uv run pytest` passed 4 tests.
+
+Research: research file 10, for layout and how to handle secrets.
+Questions: none
+Decisions: D9, D10.
+
+Shipped:
+- `pyproject.toml` and `uv.lock`, with the `wx` command.
+- `src/wx/config.py`: reads `.env` and the environment. It never prints a key.
+- `src/wx/cli.py`: `wx` shows which keys are set.
+- `.env.example`, `.gitignore`, and a short README. The README is now UTF-8.
+- `tests/test_config.py`: works with no `.env`, reads `.env`, hides key values, and checks `.env.example`.
+- Phase plan: [phases/phase-0-setup.md](phases/phase-0-setup.md).
+
+Not done yet:
+- The Wallex key is still not in `.env`.
+
+Next change idea:
+- Phase 1 plan, then read public Wallex market data and log it.

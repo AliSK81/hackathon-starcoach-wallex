@@ -18,6 +18,8 @@ This file lists decisions we already made, and facts we checked.
 | D6 | Medium risk. Use the defaults from research file 03: risk 0.75% per trade, max 25% in one coin, max 60% in coins in total, stop-loss based on ATR, daily-loss and drawdown limits. Ignore the different numbers in other research files. | 2026-10-22 | team |
 | D7 | Build a small first version. These wait until the bot trades live: a second reviewing AI, a machine-learning signal, a tamper-proof log, saved AI answers, Docker, CI. | 2026-10-22 | team |
 | D8 | Live trading comes before the backtest and the docs. | 2026-10-22 | team |
+| D9 | Python 3.12 or newer, run with `uv`. The command is `wx`. Libraries are added only when a phase needs them. | 2026-10-22 | Claude |
+| D10 | Setting names: `WALLEX_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`. `.env.example` must list the same names. A test checks this. | 2026-10-22 | Claude |
 
 ## Checked facts
 
