@@ -27,6 +27,7 @@ This file lists decisions we already made, and facts we checked.
 | D15 | Keep 120 days of candles (`wx candles` default). Wallex has at least that much (change 7). | 2026-10-22 | team |
 | D16 | AI calls use temperature 0 and JSON mode. We keep the model's own reasoning text, so each decision can log it. An AI error message never contains the key. | 2026-10-22 | Claude |
 | D17 | The AI gets a fixed set of named features per market, listed in `FEATURES` in [features.py](../src/wx/features.py). Indicators use closed 1-hour candles only (the last 1,000). Returns compare the live mid price with 1-minute candles that have ended. Regime: ADX above 25 is a trend (up or down by the EMA 20 slope), below 20 is a range, else transition. The maths is our own code, with no new library. | 2026-10-22 | Claude |
+| D18 | One AI call per cycle covers all markets. Per market it answers BUY, SELL or HOLD, a confidence from 0 to 1, a reason, the feature names it used, and what would prove it wrong. Code turns a market into HOLD if the action is unknown, the confidence is bad, no known feature is cited, or it says SELL on a coin we don't hold (or hold less than the minimum order of). If the AI fails or its JSON can't be read, every market is HOLD and the record says `fallback`. Decisions are logged in `data/decisions/<UTC date>.jsonl`, with the code version, all features, cash, holdings, the AI's raw answer and its reasoning. | 2026-10-22 | Claude |
 
 ## Checked facts
 
@@ -48,6 +49,7 @@ Facts checked with live Wallex data, our own key, or a real order. Research note
 | F12 | The AI supports JSON mode (`response_format`). It sends its thinking in a separate `reasoning_content` field, not in the answer. | works | 2026-10-22 | `wx ai` |
 | F13 | A wrong AI key gives HTTP 401. The error message repeats the key we sent. | Our code replaces it with `***`. | 2026-10-22 | `wx ai` with a wrong key |
 | F14 | Round-trip cost on our 6 markets, with taker fees and the live spread | 0.61% (USDTTMN) to 1.17% (ETHTMN). Fees are 0.60% of that. The spread was 0.01% to 0.57%. | 2026-10-22 | `wx features` |
+| F15 | One decision call for 6 markets | About 60 s and 7,700 tokens: 3,200 in, 4,500 out, of which 2,800 are reasoning. | 2026-10-22 | `wx decide` |
 
 #### Market rules for the default markets (F10)
 

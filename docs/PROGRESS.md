@@ -287,3 +287,31 @@ Not done yet:
 
 Next change idea:
 - `wx decide`: send these features to the AI, check its JSON answer, and log the decision.
+
+### Change 10 — `wx decide` asks the AI for a checked, logged decision — 2026-10-22
+Phase: 2, step 3
+How to see it: `uv run wx decide` (or `uv run wx decide BTCTMN`)
+Proof it works:
+- Live: the AI said HOLD on all 6 markets, with confidence 0.74 to 0.88. Each reason cites real feature values. For example: the uptrends are strong, but RSI is high and prices are pulling back, so the edge does not cover the round-trip cost. No problems found. Exit 0. It took 73 s in all, and the AI took 60 s of that.
+- The log line has the code version, all features, cash (5,000,000 TMN), holdings (none), the raw answer and 6,500 characters of AI reasoning.
+- AI unreachable: `wx decide BTCTMN` logged a `fallback` record with HOLD and the error, and exited with 1.
+- No key appears in the prompt or the log (tested).
+- `uv run pytest` passed 65 tests, with no internet.
+
+Research: research file 01 (decision schema, cited features, fallback to HOLD) and file 02 (strict JSON, never retry into a trade).
+Questions: none
+Decisions: D18. Fact F15.
+
+Shipped:
+- `src/wx/decide.py`: the prompt, the answer check, holdings worth at least the minimum order, and the decision log. The log records the code version (package version and git commit).
+- `wx decide [SYMBOL ...]`.
+- `wx features` and `wx decide` share one feature loop.
+- `tests/test_decide.py`: 12 tests.
+
+Not done yet:
+- One decision so far, and it was HOLD everywhere. We have not seen a BUY yet.
+- The AI takes about 60 s. That is fine for a cycle of several minutes, but not for every minute.
+- The AI does not see its past decisions.
+
+Next change idea:
+- `wx run`: a loop that decides on a fixed beat, logs every cycle, and survives errors. This finishes Phase 2.

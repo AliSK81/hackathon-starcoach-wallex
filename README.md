@@ -54,6 +54,12 @@ uv run wx features
 
 This updates the candles, reads the live order book, and prints the indicators the AI will use, for the same six markets. With `WALLEX_API_KEY` it also shows the round-trip cost.
 
+```bash
+uv run wx decide
+```
+
+This computes the features, then asks the AI for BUY, SELL or HOLD on each of the six markets, with a reason. Code checks the answer and logs it in `data/decisions/`. It places no orders. It needs the AI settings. With `WALLEX_API_KEY` the AI also sees our cash and holdings.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

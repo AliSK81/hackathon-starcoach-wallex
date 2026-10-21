@@ -8,6 +8,7 @@ from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
+from wx.decide import code_version, decide, holdings, log_decision
 from wx.features import FEATURES, market_features
 from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
@@ -159,21 +160,86 @@ def taker_fees(settings: Settings) -> dict[str, float]:
         return {}
 
 
+def collect_features(symbols, settings: Settings) -> tuple[dict[str, dict], dict[str, str]]:
+    """Features and errors, each keyed by market. One bad market never stops the rest."""
+    fees = taker_fees(settings)
+    table, errors = {}, {}
+    for symbol in symbols:
+        try:
+            table[symbol] = market_features(symbol, DATA_DIR, fees.get(symbol))
+        except (WallexError, ValueError) as error:
+            errors[symbol] = str(error)
+            print(f"  {symbol}: failed. {error}")
+    return table, errors
+
+
 def run_features(symbols: list[str], settings: Settings) -> int:
     markets = pick_markets(symbols)
     if markets is None:
         return 1
-    fees = taker_fees(settings)
-    table, failed = {}, 0
-    for symbol in markets:
-        try:
-            table[symbol] = market_features(symbol, DATA_DIR, fees.get(symbol))
-        except (WallexError, ValueError) as error:
-            failed += 1
-            print(f"  {symbol}: failed. {error}")
+    table, errors = collect_features(markets, settings)
     if table:
         print(features_report(table))
-    return 1 if failed else 0
+    return 1 if errors else 0
+
+
+def missing_ai_settings(settings: Settings) -> bool:
+    missing = [k for k in ("LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY") if not settings.is_set(k)]
+    if missing:
+        print(f"Missing in .env: {', '.join(missing)}")
+    return bool(missing)
+
+
+def decision_report(record: dict) -> str:
+    lines = []
+    if record["error"]:
+        lines.append(f"The AI failed, so every market is HOLD: {record['error']}")
+    if record["ai"]:
+        ai = record["ai"]
+        lines.append(f"Model {ai['model']} answered in {ai['seconds']} s. Tokens: {ai['usage'].get('total_tokens', 'unknown')}.")
+    if record["market_view"]:
+        lines.append(f"Market view: {record['market_view']}")
+    for d in record["decisions"]:
+        lines.append(f"  {d['symbol']:<9} {d['action']:<4} {d['confidence']:.2f}  {d['reason']}")
+        if d["cited"]:
+            lines.append("            cited: " + ", ".join(f"{k}={v}" for k, v in d["cited"].items()))
+        for problem in d["problems"]:
+            lines.append(f"            problem: {problem}")
+    for problem in record["problems"]:
+        lines.append(f"Problem: {problem}")
+    return "\n".join(lines)
+
+
+def run_decide(symbols: list[str], settings: Settings) -> int:
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    table, feature_errors = collect_features(markets, settings)
+    record = {"version": code_version(), "markets": table, "feature_errors": feature_errors,
+              "cash_tmn": None, "held": {}, "account_error": None}
+    if not table:
+        path = log_decision(DATA_DIR, {**record, "driver": "none", "error": "no market has features", "decisions": []})
+        print(f"No market has features, so no decision. Logged: {path}")
+        return 1
+    key = settings.get("WALLEX_API_KEY")
+    try:
+        if not key:
+            raise WallexError("no WALLEX_API_KEY")
+        rules = {s: MarketRules.from_wallex(info) for s, info in markets.items()}
+        record["cash_tmn"], record["held"] = holdings(fetch_balances(key), rules, table)
+    except WallexError as error:
+        record["account_error"] = str(error)
+        print(f"Could not read the account, so the AI is told cash is unknown and we hold nothing: {error}")
+    base_url, model = settings.get("LLM_BASE_URL"), settings.get("LLM_MODEL")
+    print(f"Asking {model} about {len(table)} markets ...")
+    record.update(decide(table, record["cash_tmn"], record["held"],
+                         lambda messages: chat(base_url, model, settings.get("LLM_API_KEY"), messages, json_mode=True)))
+    path = log_decision(DATA_DIR, record)
+    print(decision_report(record))
+    print(f"Logged: {path}")
+    return 0 if record["driver"] == "ai" and not feature_errors else 1
 
 
 AI_CHECK = [
@@ -187,9 +253,7 @@ AI_CHECK = [
 
 
 def run_ai(settings: Settings) -> int:
-    missing = [k for k in ("LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY") if not settings.is_set(k)]
-    if missing:
-        print(f"Missing in .env: {', '.join(missing)}")
+    if missing_ai_settings(settings):
         return 1
     base_url = settings.get("LLM_BASE_URL")
     print(f"Asking {settings.get('LLM_MODEL')} at {urlparse(base_url).netloc} ...")
@@ -235,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
     rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
     rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     commands.add_parser("ai", help="check the AI settings with one small call")
+    decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no orders)")
+    decider.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     features = commands.add_parser("features", help="indicators per market, from candles and the live book")
     features.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
@@ -245,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_account(Settings.load())
     if args.command == "ai":
         return run_ai(Settings.load())
+    if args.command == "decide":
+        return run_decide(args.symbols, Settings.load())
     if args.command == "features":
         return run_features(args.symbols, Settings.load())
     if args.command == "markets":
