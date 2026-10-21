@@ -54,7 +54,7 @@
 
 ## Recommended design decisions
 1. Day 0: call `wallex_basic_get_account_fees` with the real key and write the result into the run manifest. Recompute all fee-dependent numbers (files 03, 06).
-2. **Spot only, no leverage** (organizer rule). Never expose margin, credit or OTC tools. Tradable markets are all Wallex markets except [wallex_inactive_markets.txt](wallex_inactive_markets.txt); see 05 section 13.
+2. **Spot only, no leverage** (organizer rule). Never expose margin, credit or OTC tools. Tradable markets are all Wallex markets except [wallex_inactive_markets.txt](../../src/wx/inactive_markets.txt); see 05 section 13.
 3. Rate limit: unauthenticated MCP calls showed a limit of 5; poll REST market endpoints with caching, and keep the LLM's per-cycle tool calls few.
 4. Store the key only in `.env` and the `X-API-Key` header; never in prompts, logs or tool arguments.
 

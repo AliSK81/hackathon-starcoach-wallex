@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 1, not started
+- **Current phase:** 1, in progress
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -18,8 +18,8 @@ Update this after every change.
 
 | Item | Needed by | Status |
 |---|---|---|
-| Wallex key (read) in `.env` | Phase 1 | We have one. It is not in `.env` yet. |
-| AI provider, model, URL, and key in `.env` | Phase 2 | Waiting |
+| Wallex key (read) in `.env` | Phase 1 | In `.env`. Not tested yet. |
+| AI provider, model, URL, and key in `.env` | Phase 2 | In `.env`. Not tested yet. |
 | A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
 | Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
 | Which account is the competition account | Phase 4 | Unknown |
@@ -80,3 +80,29 @@ Not done yet:
 
 Next change idea:
 - Phase 1 plan, then read public Wallex market data and log it.
+
+### Change 2 — `wx markets` lists allowed markets and saves a snapshot — 2026-10-22
+Phase: 1, step 1
+How to see it: `uv run wx markets`
+Proof it works: it read 373 markets from Wallex. 120 are allowed and 253 are forbidden, the same as the research found. It printed the top 10 by volume and saved `data/markets/20261021T223710Z.json`. `uv run pytest` passed 10 tests, with no internet.
+
+Research: research file 05, sections 1, 7 and 13. Still true: `/v1/markets` needs no key and has the same fields.
+Questions: none
+Decisions: D11.
+
+Shipped:
+- Phase plan: [phases/phase-1-read.md](phases/phase-1-read.md).
+- `src/wx/wallex.py`: GET a public Wallex path. Any error becomes a `WallexError`.
+- `src/wx/markets.py`: the allowed-market rule (D3), top by volume, and saving a snapshot.
+- `wx markets`: prints the report. On a network error it says so and exits with 1.
+- The forbidden-market list moved to `src/wx/inactive_markets.txt`. Links in the docs point there now.
+- `data/` is ignored by git.
+- `tests/test_markets.py`: 6 tests.
+
+Not done yet:
+- The market rules (decimals, minimum size) are saved but not used by any code yet.
+- No candle history, no live price loop.
+- The keys in `.env` are not tested yet.
+
+Next change idea:
+- Save 1-minute and 1-hour candles to disk for a few liquid allowed markets.

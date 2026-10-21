@@ -50,7 +50,7 @@
 - **LLM provider:** custom, chosen later. Keep the client behind an OpenAI-compatible `base_url`.
 - **API key:** supplied later via a gitignored `.env` (`WALLEX_API_KEY`). A read-only key is available for research if needed.
 
-- **Spot only, no leverage; fixed market allowlist:** all markets except [wallex_inactive_markets.txt](wallex_inactive_markets.txt) (120 of 373 tradable on 2026-10-21; see 05 section 13).
+- **Spot only, no leverage; fixed market allowlist:** all markets except [wallex_inactive_markets.txt](../../src/wx/inactive_markets.txt) (120 of 373 tradable on 2026-10-21; see 05 section 13).
 
 ## Still open (not blocking)
 
