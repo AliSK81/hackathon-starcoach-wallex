@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 1, in progress
+- **Current phase:** 2, not started (Phase 1 done)
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -189,3 +189,28 @@ Not done yet:
 
 Next change idea:
 - Market rules for the default markets: load them from `/v1/markets`, write them in DECISIONS.md, and add round-to-rules helpers. This finishes Phase 1.
+
+### Change 6 — market rules and round-to-rules helpers. Phase 1 done — 2026-10-22
+Phase: 1, step 5 (last)
+How to see it: `uv run wx rules` (or `uv run wx rules BTCUSDT`)
+Proof it works:
+- Live: `wx rules` printed the rules for the 6 default markets. `wx rules TONTMN` refused, with exit 1.
+- `wx candles BTCTMN` and `wx watch PEPETMN --cycles 1` still work after the shared market check changed.
+- `uv run pytest` passed 32 tests, with no internet.
+
+Research: research file 05, section 7. It guessed that `stepSize` and `tickSize` are decimals. Now checked (F7). New: the MARKET flag is off on most markets (F9).
+Questions: none
+Decisions: none. Facts F7 to F10.
+
+Shipped:
+- `src/wx/rules.py`: `MarketRules` from a `/v1/markets` entry. `round_qty` rounds down. `round_price` rounds a buy down and a sell up. `problems` lists why Wallex would refuse an order.
+- `wx rules [SYMBOL ...]`: prints the rules table.
+- `wx candles`, `wx watch` and `wx rules` share one market check (`pick_markets`).
+- `tests/test_rules.py`: 6 tests.
+
+Not done yet:
+- The rules are not confirmed by a real order. That comes in Phase 4.
+- We don't know if SOLTMN, XRPTMN and PEPETMN accept MARKET orders. A stop-loss there may need a LIMIT order priced to fill at once.
+
+Next change idea:
+- Phase 2 plan. Then test the AI settings in `.env` with one small call.

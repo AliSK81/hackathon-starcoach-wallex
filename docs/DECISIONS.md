@@ -26,7 +26,7 @@ This file lists decisions we already made, and facts we checked.
 
 ## Checked facts
 
-Facts checked with our own key or a real order. Research notes from 2026-10-21 don't count until we check them again.
+Facts checked with live Wallex data, our own key, or a real order. Research notes from 2026-10-21 don't count until we check them again.
 
 | ID | Fact | Value | Checked on | How |
 |---|---|---|---|---|
@@ -36,12 +36,30 @@ Facts checked with our own key or a real order. Research notes from 2026-10-21 d
 | F4 | Fees on all 186 USDT markets | maker 0.10%, taker 0.13% | 2026-10-22 | `wx account` |
 | F5 | A buy and a sell on a TMN market, both as taker | costs 0.60% of the trade, plus the spread | 2026-10-22 | from F3 |
 | F6 | Fees depend on recent trade volume. The fee reply has a `metaData` entry with volume levels in Toman: 0, 100M, 1B, 3B, 10B, 20B. Our recent volume is 0. | Rates for the higher levels are unknown. | 2026-10-22 | `/v1/account/fee` |
+| F7 | `stepSize` and `tickSize` in `/v1/markets` are numbers of decimals, for quantity and price. They are not step sizes. | All 373 markets: `minQty` = 10^-`stepSize`, and the website's own precision fields are equal. Live books and trades on our 6 markets use exactly these decimals. One odd case: USDTTMN book quantities have up to 8 decimals, but `stepSize` is 2. We use 2. | 2026-10-22 | `/v1/markets`, `/hector/web/v1/markets`, `/v1/depth`, `/v1/trades` |
+| F8 | Minimum order value | 50,000 TMN on all 187 TMN markets. 1 USDT on all 186 USDT markets. | 2026-10-22 | `/v1/markets` |
+| F9 | `isMarketTypeEnable` is true on only 7 markets: BTCTMN, ETHTMN, USDTTMN, XAUTTMN, BTCUSDT, ETHUSDT, XAUTUSDT. It is false on SOLTMN, XRPTMN and PEPETMN. | It probably means MARKET orders are allowed. Not confirmed. | 2026-10-22 | `/v1/markets` |
+| F10 | Rules for our default markets | See the table below. | 2026-10-22 | `wx rules` |
+
+#### Market rules for the default markets (F10)
+
+| Market | Quantity decimals | Price decimals | Min quantity | Min order | MARKET flag |
+|---|---|---|---|---|---|
+| BTCTMN | 8 | 0 | 0.00000001 | 50,000 TMN | on |
+| ETHTMN | 5 | 0 | 0.00001 | 50,000 TMN | on |
+| SOLTMN | 5 | 0 | 0.00001 | 50,000 TMN | off |
+| XRPTMN | 1 | 0 | 0.1 | 50,000 TMN | off |
+| PEPETMN | 0 | 4 | 1 | 50,000 TMN | off |
+| USDTTMN | 2 | 0 | 0.01 | 50,000 TMN | on |
+
+Rules can change. Code reads them from Wallex at start. It does not use this table.
 
 ### Still unknown
 
 Check each of these when a change needs it:
 - Is the fee on a BUY taken in the coin or in Toman?
-- Are `stepSize` and `tickSize` numbers of decimals, or step sizes?
+- F7 says decimals. Confirm it with the first real order.
+- What does `isMarketTypeEnable` = false mean (F9)? Can we send MARKET orders on SOLTMN, XRPTMN and PEPETMN?
 - How to send a MARKET order. Is a price required? Can we say "spend X Toman"?
 - Order status values and error codes (no money, too small, bad precision, duplicate ID, too many requests).
 - The longest allowed `client_id`, and which characters it may use.

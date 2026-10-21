@@ -12,7 +12,7 @@ Goal: the bot reads real Wallex data, saves it, and knows the trading rules.
 ## Checklist
 
 - [x] `wx markets`: read all markets, keep only allowed ones, save a snapshot.
-- [ ] Trading rules per market (decimals, minimum size) are ready for later code.
+- [x] Trading rules per market (decimals, minimum size) are ready for later code.
 - [x] Save candle history to disk for a few markets (1-minute and 1-hour).
 - [x] A loop that reads live prices and logs them. It survives network errors.
 - [x] With our key: read balances and fees. Write them in DECISIONS.md.

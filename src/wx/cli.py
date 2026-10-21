@@ -8,6 +8,7 @@ from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
 from wx.config import KEYS, Settings
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
+from wx.rules import MarketRules
 from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
@@ -43,8 +44,11 @@ def run_markets() -> int:
     return 0
 
 
-def check_symbols(symbols: list[str]) -> list[str] | None:
-    """The symbols in upper case (default list if empty), or None if any is refused."""
+def pick_markets(symbols: list[str]) -> dict[str, dict] | None:
+    """Wallex info for the symbols (default list if empty), in order.
+
+    None if Wallex can't be read or any symbol is refused.
+    """
     symbols = [s.upper() for s in symbols] or list(DEFAULT_SYMBOLS)
     try:
         allowed = allowed_markets(fetch_markets(), load_inactive())
@@ -55,13 +59,14 @@ def check_symbols(symbols: list[str]) -> list[str] | None:
     if refused:
         print(f"Not allowed or not on Wallex: {', '.join(refused)}")
         return None
-    return symbols
+    return {s: allowed[s] for s in symbols}
 
 
 def run_candles(symbols: list[str], days: int) -> int:
-    symbols = check_symbols(symbols)
-    if symbols is None:
+    markets = pick_markets(symbols)
+    if markets is None:
         return 1
+    symbols = list(markets)
     failed = 0
     for symbol in symbols:
         for size in SIZES:
@@ -103,10 +108,30 @@ def run_account(settings: Settings) -> int:
     return 0
 
 
-def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
-    symbols = check_symbols(symbols)
-    if symbols is None:
+def rules_report(rules: list[MarketRules]) -> str:
+    lines = [f"{'Market':<10} {'Qty dec':>7} {'Price dec':>9} {'Min qty':>10} {'Min order':>10}  MARKET flag"]
+    for r in rules:
+        min_order = f"{r.min_notional} {r.quote}"
+        lines.append(
+            f"{r.symbol:<10} {r.qty_decimals:>7} {r.price_decimals:>9} {r.min_qty:>10f} {min_order:>10}  "
+            f"{'on' if r.market_orders else 'off'}"
+        )
+    return "\n".join(lines)
+
+
+def run_rules(symbols: list[str]) -> int:
+    markets = pick_markets(symbols)
+    if markets is None:
         return 1
+    print(rules_report([MarketRules.from_wallex(info) for info in markets.values()]))
+    return 0
+
+
+def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    symbols = list(markets)
     print(f"Watching {' '.join(symbols)} every {interval} s. Log: {DATA_DIR / 'prices'}. Ctrl+C stops.")
     try:
         watch(symbols, DATA_DIR, interval, cycles)
@@ -128,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")
     watcher.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
     commands.add_parser("account", help="read balances and fees (needs WALLEX_API_KEY)")
+    rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
+    rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
     # Wallex messages can be in Persian. Never crash on a console that can't show them.
     if hasattr(sys.stdout, "reconfigure"):
@@ -140,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_candles(args.symbols, args.days)
     if args.command == "watch":
         return run_watch(args.symbols, args.interval, args.cycles)
+    if args.command == "rules":
+        return run_rules(args.symbols)
     print(status(Settings.load()))
     return 0
 

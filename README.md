@@ -36,6 +36,12 @@ uv run wx account
 
 This reads our balances and fee rates and saves a copy in `data/account/`. It needs `WALLEX_API_KEY` in `.env`.
 
+```bash
+uv run wx rules
+```
+
+This shows the order rules for the six markets: decimals, minimum quantity, and minimum order value. It needs no key.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
