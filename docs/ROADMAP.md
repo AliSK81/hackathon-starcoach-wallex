@@ -1,138 +1,179 @@
-# Roadmap — Wallex Algorithmic Trading Engine
+# Roadmap — Wallex Trading Engine
 
-This is a roadmap, not a spec. It defines the big idea and the sequence of destinations toward it — nothing else. Research, questions, design decisions, and tool choices are **not** written down here: they get generated in the flow, one patch at a time, only when that patch is actually being worked on (see [docs/PROGRESS.md](PROGRESS.md)). Writing them now, for phases not yet started, would be exactly the upfront design this project is avoiding.
+This file lists the phases of the project, in order. It says where we are going. It does not say how.
 
-Prior exploratory research exists in [docs/research/](research/00-index.md). It is a resource bank to consult when a phase is actually picked up — not a source of pre-made answers, since time-sensitive things in it (API behavior, fees, market lists, available history) may have drifted.
+We do not design a phase before we start it. Research, questions, and design choices happen when a phase starts. They are recorded in [PROGRESS.md](PROGRESS.md).
 
-## North star
+Other files:
+- [requirements.md](requirements.md): the hackathon rules.
+- [DECISIONS.md](DECISIONS.md): decisions we already made, and facts we checked.
+- [research/](research/00-index.md): old research. Use it as a reference. Check it is still true before you use it.
 
-An automated trading engine for the Wallex Algorithmic Trading Challenge ([docs/requirements.md](requirements.md)) that: reads Wallex market data, decides buy/sell algorithmically with a real, explainable AI contribution, never lets that AI decision bypass a deterministic risk/capital check, executes and tracks orders reliably, logs every decision so judges can tell it apart from manual trading, and can be proven correct on history and in a live-but-safe rehearsal before any real capital moves. Everything is measured against the two judging stages in requirements.md: financial performance and technical quality (strategy logic, real AI use, risk management, reproducibility, backtest/shadow evidence).
+## Goal
 
-## Principles (apply at every phase)
+Build a bot that trades on Wallex by itself. It must:
+- read market data from Wallex;
+- use AI to decide when to buy and sell, and explain why;
+- pass every AI decision through a risk check written in normal code;
+- place orders and track them reliably;
+- log every decision, so judges can see no trade was manual;
+- be tested on past data and on live data without money.
 
-- **Continuous delivery**: the system must always be in a releasable, demonstrable state. Never land a phase that breaks the previous one. Prefer the smallest vertical slice that is honestly end-to-end over a wide but half-finished layer. If you can't demo the repo at a given commit, that commit shouldn't exist.
-- **No upfront design**: a phase's research, open questions, design decisions, and tool choices are discovered when that phase is picked up, not before. This file only ever names *what kind of thing* needs considering at each destination (research / questions / design / tools), never the content of it.
-- **Phases get broken down when started, not before**: a phase here is a destination, not a short task — most of them are too big to ship as one patch. When a phase is picked up, *before any patch for it ships*, break it into sub-phases in this same minimal format (why / in scope / exit criteria / deferred) and save that breakdown as `docs/phases/phase-<N>-<slug>.md`. That breakdown happens then, scoped to the one phase being started — not written now for phases that haven't begun. This is also where the sharper, checklist-style exit criteria and explicit in-scope boundaries belong, instead of in this file.
-- **Explore in the flow, every patch**: when a patch is picked up: (1) check [docs/research/](research/00-index.md) for anything relevant and sanity-check it still holds, (2) ask the user whatever is genuinely theirs to decide, right then, (3) design and build only the smallest slice needed, (4) ship it. Repeat per patch. Do not pre-answer step 2 or pre-decide step 3 for a patch that hasn't started.
-- **Deterministic things stay deterministic**: as the system grows, keep a hard line between what the AI decides and what code enforces (sizing, caps, stops, kill switches). Don't let this line blur for convenience.
-- **Log everything, from day one of having anything to log**: every decision cycle — including "did nothing" and "AI said yes but the gate said no" — should be traceable later.
-- **Progress lives in [docs/PROGRESS.md](PROGRESS.md), not here**: this file tracks only which phase is current. What was actually researched, asked, decided, and shipped for each patch is recorded there, once, at the moment it ships.
+## Rules for every phase
+
+1. **Go live first.** We earn profit and activity points only while the bot trades live. So live trading comes before the backtest and the write-up. Those happen while the bot trades.
+2. **Always keep it working.** Every commit must run and be demoable. Build a thin version that works from start to end. Then improve it.
+3. **Don't design ahead.** Only plan the phase you are starting.
+4. **Plan a phase when you start it.** Before the first change in a phase, write a short plan in `docs/phases/phase-<N>-<name>.md`. A checklist is enough.
+5. **For each change:** check the research, ask the user what only they can decide, build the smallest piece, ship it.
+6. **Measure, don't guess.** Fees, order rules, and limits must come from the real Wallex API. Write them in DECISIONS.md before code depends on them.
+7. **AI suggests, code decides.** Order size, limits, stop-loss, and the kill switch are normal code. The AI can never skip them.
+8. **Log everything.** Log every cycle. This includes "do nothing" and "the AI said buy but the risk check said no".
+9. **Tag the code that trades.** Every version that places real orders gets a git tag. The log records which version ran.
+10. **Track progress in PROGRESS.md.** This file only shows phase status.
 
 ## Status
 
-| Phase | Theme | Status | Plan |
-|---|---|---|---|
-| 0 | Project skeleton & ways of working | not started | — |
-| 1 | Talk to Wallex (read-only) | not started | — |
-| 2 | Make sense of the market (features/signals, offline) | not started | — |
-| 3 | First decision, no money on the line | not started | — |
-| 4 | The gate that never trusts the AI | not started | — |
-| 5 | Prove it on history (backtest) | not started | — |
-| 6 | Prove it live, without money (shadow) | not started | — |
-| 7 | Real orders, small blast radius first | not started | — |
-| 8 | Let it run (the actual live window) | not started | — |
-| 9 | Make it judge-able | not started | — |
+| Phase | Name | Stage | Status | Plan |
+|---|---|---|---|---|
+| 0 | Project setup | before live | not started | — |
+| 1 | Read from Wallex | before live | not started | — |
+| 2 | AI decides, no money | before live | not started | — |
+| 3 | Risk check and fake orders | before live | not started | — |
+| 4 | First real orders | before live | not started | — |
+| 5 | Live trading | live | not started | — |
+| 6 | Backtest | during live | not started | — |
+| 7 | Docs for judges | during live | not started | — |
 
-Status values: `not started` -> `planned` (sub-phase plan exists in `docs/phases/`) -> `in progress` (at least one patch shipped) -> `done`. The `Plan` column links to `docs/phases/phase-<N>-<slug>.md` once it exists.
+Status values: `not started`, `planned` (plan file exists), `in progress` (first change shipped), `done`.
 
----
+### Which phase earns which points
 
-## Phase 0 — Project skeleton & ways of working
-
-**Why**: nothing can be continuously delivered without a place to deliver it, and without a shared convention for what "releasable" means here.
-
-**Exit / releasable when**: an empty-but-running scaffold exists; one trivial command proves the loop works without needing any Wallex or AI access yet.
-
----
-
-## Phase 1 — Talk to Wallex (read-only)
-
-**Why**: every later phase needs real market truth; this also seeds the "uses Wallex's tools" scoring angle.
-
-**Exit / releasable when**: the system reliably fetches and logs live market state (and some history) continuously without crashing. Demoable as "it watches the market."
-
-**Explicitly deferred**: any decision-making, any order.
+| Judging item (points) | Phase |
+|---|---|
+| Profit (90) | 5 |
+| Small losses / drawdown (30) | 3, 5 |
+| Regular trading (15) | 5 |
+| No errors or crashes (15) | 1, 4, 5 |
+| Clear strategy (40) | 2, 7 |
+| Real AI use (35) | 2, 6, 7 |
+| Risk management (30) | 3 |
+| Judges can re-run it (25) | 0, 6, 7 |
+| Backtest and shadow test (20) | 3, 6 |
+| Hard rules: allowed markets only, no manual trades | 3, 4, 5 |
+| Deliverables: doc, trade log, tagged code | 2, 4, 7 |
 
 ---
 
-## Phase 2 — Make sense of the market (features & signals, offline)
+## Phase 0 — Project setup
 
-**Why**: strategy logic and real-AI-use scoring both need something worth reasoning over; this phase builds that substrate without risking anything.
+**Why:** We need a project that runs before we can add anything.
 
-**Exit / releasable when**: the system can compute and show features and candidate setups over historical and live data — no decisions made yet. Demoable as "it understands the market."
-
-**Explicitly deferred**: letting anything decide to trade.
-
----
-
-## Phase 3 — First decision, no money on the line
-
-**Why**: this is where "AI genuinely drives decisions" becomes real or stays decoration — the single highest-leverage phase for the technical score.
-
-**Exit / releasable when**: the system produces a logged, explainable decision every cycle, live, with zero financial risk. Demoable as "watch it think."
-
-**Explicitly deferred**: sizing, risk limits, real orders.
+**Done when:**
+- The project runs with one command.
+- It needs no Wallex key and no AI key yet.
+- Secrets go in a `.env` file that git ignores.
 
 ---
 
-## Phase 4 — The gate that never trusts the AI
+## Phase 1 — Read from Wallex
 
-**Why**: this is where risk/capital management, loss control, and the hard constraints (no all-in, no manual trades, etc.) actually live.
+**Why:** Every later phase needs real market data. We also need real fees and order rules. Without them we can't know if a strategy makes money.
 
-**Exit / releasable when**: every decision from Phase 3 passes through a gate that can approve/resize/reject it, every verdict is logged, and the gate is testable entirely offline.
+**Done when:**
+- The bot reads live market data and logs it without crashing.
+- It saves price history to disk, because Wallex keeps only limited history.
+- With our key, we read our fees, balances, and market rules. We write them in DECISIONS.md.
+- We have the list of allowed markets.
 
-**Explicitly deferred**: actually placing orders.
-
----
-
-## Phase 5 — Prove it on history (backtest)
-
-**Why**: direct evidence for the backtest/shadow and reproducibility scoring, and the cheapest place left to catch bugs before money is at risk.
-
-**Exit / releasable when**: a backtest run anyone can reproduce from the repo produces a report with metrics, using the same decision-log format as live. Still fully offline and safe.
-
-**Explicitly deferred**: live orders, real money.
+**Not yet:** decisions, orders.
 
 ---
 
-## Phase 6 — Prove it live, without money (shadow)
+## Phase 2 — AI decides, no money
 
-**Why**: the second half of "backtest + shadow" evidence, and the last safety net before real capital is involved.
+**Why:** Judges give 35 points for real AI use. This is where the AI starts making real decisions.
 
-**Exit / releasable when**: the full pipeline runs live and continuously, against real market data, with simulated orders, using the same decision-log and reporting pipeline already built for backtest.
+**Done when:**
+- Every cycle, the bot computes indicators from live data.
+- The AI makes a decision and explains it using those indicators.
+- Every decision is logged, including "do nothing".
+- No orders of any kind.
 
-**Explicitly deferred**: real orders.
-
----
-
-## Phase 7 — Real orders, small blast radius first
-
-**Why**: this is the step that turns the system into an actual entrant, carefully.
-
-**Exit / releasable when**: the system can place, track, and recover from a single small real order correctly and safely. A legitimate stopping point on its own — "a trading system" already exists here.
-
-**Explicitly deferred**: running it unattended for the full window.
+**Not yet:** order size, risk limits, orders.
 
 ---
 
-## Phase 8 — Let it run (the actual live window)
+## Phase 3 — Risk check and fake orders
 
-**Why**: this is the graded event itself — profit, loss control, activity, and execution stability are all measured here.
+**Why:** This is where risk management and the hard rules live. Running it with fake orders on live data is our shadow test.
 
-**Exit / releasable when**: the live run happened, is fully logged, and the account is left in a state consistent with the requirements by the time it's over.
+**Done when:**
+- Every AI decision goes through a risk check. The check can approve, shrink, or reject it.
+- The risk check can be tested without internet.
+- Approved decisions become fake orders, filled at live prices.
+- Every verdict and fake fill is logged.
+- It ran alone through several cycles, with at least one rejection, and did not crash.
 
-**Explicitly deferred**: nothing — this is the deliverable.
-
----
-
-## Phase 9 — Make it judge-able
-
-**Why**: the required architecture/decision/risk-management write-up, the per-trade decision log, reproducibility, and the demo video are all explicit deliverables in requirements.md.
-
-**Exit / releasable when**: a judge with only the repo and the video can understand, re-run, and verify the claims made.
+**Not yet:** real orders.
 
 ---
 
-## After that (only if time remains)
+## Phase 4 — First real orders
 
-Things worth returning to once everything above is real, each deserving its own small phase if and when picked up: a second "critic" AI pass on entries, a learned signal model as an additional input, a tamper-evident/hash-chained decision log, CI, containerization, a richer evaluation/robustness suite. None of these block the core deliverable; don't start them before Phase 8 has run.
+**Why:** Now the bot trades real money, carefully. Some Wallex rules can only be learned with a real order.
+
+**Done when:**
+- The bot places one small real order, tracks it, and still knows about it after a restart.
+- The kill switch works on the real account. It goes through the normal logged path.
+- What we learned is written in DECISIONS.md.
+- The code version is tagged in git.
+
+**Not yet:** running alone without supervision.
+
+---
+
+## Phase 5 — Live trading
+
+**Why:** This is what the judges score.
+
+**Done when:**
+- The bot traded live, and everything is logged.
+- Restarts did not lose any order.
+
+During this phase we only fix bugs. Each fix gets a new tag.
+
+---
+
+## Phase 6 — Backtest (during live trading)
+
+**Why:** Judges give points for a backtest. It also shows whether the AI does better than simple rules.
+
+**Done when:**
+- Anyone can run the backtest from the repo and get a report.
+- It uses the same log format as live trading.
+- It compares the bot with a version that has no AI.
+
+It can start after Phase 3. We decide then if a quick version should run before going live.
+
+---
+
+## Phase 7 — Docs for judges (during live trading)
+
+**Why:** The rules require a written doc and a trade log.
+
+**Done when:**
+- A judge can understand and re-run the project using only the repo.
+- The doc covers: architecture, AI and Wallex tool use, buy and sell rules, risk management, how to re-run.
+
+---
+
+## Later, only after live trading works
+
+Do these only after Phase 5 is running:
+- a second AI that reviews each entry;
+- a machine-learning signal as extra input;
+- a log that can't be edited without detection;
+- saved AI answers, so re-runs are exact;
+- automatic tests on every push (CI);
+- Docker.

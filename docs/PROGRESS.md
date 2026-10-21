@@ -1,46 +1,59 @@
 # Progress Log
 
-[docs/ROADMAP.md](ROADMAP.md) defines the destinations. This file is the trail: one entry per shipped patch, written only when that patch ships — never ahead of it. A patch is the smallest change that leaves the system in a new, still-releasable state (see ROADMAP.md's continuous-delivery principle).
+[ROADMAP.md](ROADMAP.md) lists the phases. This file records what we actually did.
 
-## How a session uses this file
+- Add one entry for every change that ships. Never write entries in advance.
+- A "change" is the smallest step that still leaves the project working.
+- Decisions that last longer than one change go in [DECISIONS.md](DECISIONS.md), not here.
 
-1. Read [ROADMAP.md](ROADMAP.md)'s status table to see which phase is current.
-2. If that phase has no sub-phase plan yet (no `docs/phases/phase-<N>-<slug>.md`), create one now, before shipping anything: break the phase into sub-phases using the roadmap's own minimal format (why / in scope / exit criteria / deferred) — no research/questions/design/tools content, same as the roadmap. Mark the phase `planned` in ROADMAP.md and link the file. This happens once per phase, not once per patch.
-3. Read the most recent entry below (if any) for where things stand and its "Next smallest patch candidate," and the phase's sub-phase plan for which sub-phase is next.
-4. Do the exploration for **only that next patch** — research, questions, design, tool choice — scoped to just it. Nothing further ahead. Ask the user in-flow whatever is genuinely theirs to decide; don't carry pre-made answers in from an earlier session.
-5. Build and ship that patch, keeping the system demoable throughout.
-6. Append a new entry below using the template. Never edit past entries except to correct a factual error (note the correction inline). Update ROADMAP.md's phase status table if a phase's state changed (e.g. first patch shipped -> `in progress`; last sub-phase done -> `done`). If a sub-phase was completed, note it in the phase's plan file too.
-7. Stop. Do not start designing the patch after next, or the next phase's breakdown, ahead of time — that happens in its own turn, in its own flow, possibly in a future session.
+## Status board
 
-If a session is asked to "continue toward the roadmap" with no further detail, this is the procedure: steps 1–7, for exactly one patch (plus step 2 if the phase has no plan yet).
+Update this after every change.
+
+- **Current phase:** 0, not started
+- **Live trading:** not live yet
+- **Version trading live:** none yet
+
+### What we need from the team
+
+| Item | Needed by | Status |
+|---|---|---|
+| Wallex key (read) in `.env` | Phase 1 | We have one. It is not in `.env` yet. |
+| AI provider, model, URL, and key in `.env` | Phase 2 | Waiting |
+| A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
+| Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
+| Which account is the competition account | Phase 4 | Unknown |
+
+## How to work on the next change
+
+1. Read the status board and the roadmap table. Find the current phase.
+2. If the phase has no plan file yet, write one in `docs/phases/`. Keep it short. Mark the phase `planned` in the roadmap.
+3. Read the last entry below. Pick the next change. If something in "What we need from the team" blocks it, ask the user now.
+4. Explore only this change. Check DECISIONS.md first, and don't ask again what is already decided there. Ask the user what only they can decide.
+5. Build it and ship it. Run something that proves it works.
+6. Add an entry below. Update the status board and the roadmap table. Put lasting decisions in DECISIONS.md.
+7. Stop, unless the user asked you to keep going. Never plan two changes ahead.
 
 ## Entry template
 
 ```
-### Patch N — <one-line summary of what shipped> — <date>
-Phase: <roadmap phase this belongs to>
-Release state: <how to see/run/demo it right now — e.g. the exact command>
+### Change N — <what shipped, in one line> — <date>
+Phase: <e.g. 1, step 2>
+How to see it: <the exact command>
+Proof it works: <what you ran, and what happened>
 
-Research:
-- <what was actually checked/found for this patch; note if something from docs/research/ turned out stale>
+Research: <what you checked, or "none". Say if old research was wrong.>
+Questions: <question -> answer, or "none">
+Decisions: <choices made for this change. Lasting ones go to DECISIONS.md.>
 
-Questions asked in-flow (and answers):
-- Q: ... -> A: ...
-
-Design decided (scoped to this patch only):
-- <only what this patch needed; do not record decisions for future patches here>
-
-Tools/choices made (scoped to this patch only):
+Shipped:
 - ...
 
-What shipped:
+Not done yet:
 - ...
 
-Known gaps / explicitly not done yet:
-- ...
-
-Next smallest patch candidate:
-- <a proposal, not a commitment — the next session re-explores before building it>
+Next change idea:
+- <a suggestion only>
 ```
 
 ## Entries
