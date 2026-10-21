@@ -1,4 +1,4 @@
-# Wallex Official MCP Server (supersedes the "no official MCP" finding in 05, 08, 12)
+# Wallex Official MCP Server
 
 **Scope**: the official Wallex MCP endpoint, its tool surface and how our system should use it. · **Researched**: 2026-10-21
 **Sources**: https://api.wallex.ir/llm.txt · https://wallex.ir/landing/mcp/ · live public calls to `https://api.wallex.ir/mcp` (`initialize`, `tools/list`; no API key, no orders) · full tool schemas saved in [wallex_mcp_tools.json](wallex_mcp_tools.json)
@@ -54,13 +54,10 @@
 
 ## Recommended design decisions
 1. Day 0: call `wallex_basic_get_account_fees` with the real key and write the result into the run manifest. Recompute all fee-dependent numbers (files 03, 06).
-2. Prefer spot long-only. Margin and short tools exist, but the hackathon's approved-market list and any rule on margin are unknown. Confirm with the organizers before using margin.
+2. **Spot only, no leverage** (organizer rule). Never expose margin, credit or OTC tools. Tradable markets are all Wallex markets except [wallex_inactive_markets.txt](wallex_inactive_markets.txt); see 05 section 13.
 3. Rate limit: unauthenticated MCP calls showed a limit of 5; poll REST market endpoints with caching, and keep the LLM's per-cycle tool calls few.
 4. Store the key only in `.env` and the `X-API-Key` header; never in prompts, logs or tool arguments.
 
 ## Unverified / open questions
 - The exact JSON shape of tool results. I did not call any tool beyond `initialize` and `tools/list`.
 - Whether keyed MCP calls have a higher rate limit than 5.
-- Whether the hackathon's "Wallex MCP" means this official endpoint; very likely, but confirm.
-- Whether margin and OTC markets count as "approved markets".
-- The pasted `blob:https://wallex.ir/...` link is a browser-local object URL and cannot be fetched from outside that browser session. If it holds extra material (a PDF or doc), save it as a file and share it.

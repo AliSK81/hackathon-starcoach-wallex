@@ -13,7 +13,7 @@ freqtrade/freqtrade@0db79d3 (GPL-3.0) · hummingbot/hummingbot@9af100d (Apache-2
 - Fail **closed**: tradermonty's breaker returns HALTED on incomplete/corrupt state (`SKILL.md` "Key Principles" 4). Our gate must reject when price/balance data is stale or any check raises.
 - Rubric mapping: "order size cap" = `max_position_pct` + `max_gross_exposure_pct`; "stop loss" = mandatory per-order stop attached by the gate (no order passes without one); "no all-in entry" = per-position cap 25% and gross cap 60% of equity; loss control (30 pts, smaller drawdown) = soft/hard DD breakers + daily halt.
 - Kelly is only an **upper bound** (quarter Kelly, Wilson lower-bound win rate, min 50 trades per agiprolabs `kelly-criterion/SKILL.md`). With 3 days of data we cannot estimate it; do not size from it.
-- End-of-run: stop entries 6h before end, flatten everything (incl. USDT if "coin-denominated" is read strictly) to TMN, verify via balances API, log final equity. Residual dust below min-notional is an open risk.
+- Flatten (operator command / kill switch; the system does not know the end time): optionally stop entries, sell all non-TMN assets to TMN, verify via balances API, log final equity. If config `end_at` is set, the same steps run on a schedule. Residual dust below min-notional is possible.
 - Portfolio optimizers (Riskfolio/PyPortfolioOpt/skfolio) are overkill for 2-4 positions in 3 days; reuse only their ideas (CDaR/MDD definitions, `DiscreteAllocation` rounding, DSR). Use inverse-volatility weights.
 
 ## Findings
@@ -173,7 +173,8 @@ def gate(intent, acct, cfg, now):
 ### C. Exit manager (runs every tick independent of the LLM, reduce-only market/aggressive-limit orders)
 Order each tick: kill switch/flatten schedule, hard stop (net PnL <= -s), trailing (Hummingbot ratchet: arm at +1.5%, trail 0.8%), take profit, time stop, then (optional) LLM "exit" suggestion (can only tighten or exit, never widen stops). The LLM can close early or tighten a stop; it cannot loosen a stop or raise size: this keeps "AI drives decisions" (entries/exits timing) while risk stays deterministic.
 
-### D. Kill switch and end-of-run flatten-to-Toman
+### D. Kill switch and flatten-to-Toman
+**Scope decision: the system is end-agnostic.** It does not know the hackathon end time or what counts as final holdings. The flatten procedure below is an operator-triggered command (`flatten`, or the kill switch) with optional config `end_at`; it is never assumed. The T-offsets below apply only when `end_at` is configured; otherwise run steps 2 onward on the `flatten` command.
 1. T-6h: `entry_cutoff`; no new entries. T-2h: tighten trailing delta to 0.4%, time stops to 30 min.
 2. T-60 min: cancel all resting orders; sell all non-TMN assets (limit at best bid, 3 retries at 20 s each, then market-equivalent aggressive limit through the book); loop until every non-TMN balance is below min-notional.
 3. T-15 min: re-read balances via API; any remaining coin or USDT balance is force-sold; USDT->TMN conversion via USDT/TMN market (ASSUMPTION: requirements say "no coin-denominated holdings", USDT likely counts).
@@ -193,8 +194,7 @@ Dust: balances below exchange min-notional cannot be sold; keep the entry `min_o
 
 ## Unverified / open questions
 - Wallex fee schedule (maker/taker, tier), minimum order value per market, step/tick sizes, dust handling, order types (market? limit? stop-limit?), rate limits: https://developers.wallex.ir/docs intro page contains none of these; need the API reference pages. All fee-dependent numbers above assume 0.35%/side and must be recomputed.
-- Whether USDT counts as "coin-denominated" at the end (assumed yes).
-- Whether the official end-of-evaluation valuation marks open positions at last price or requires realized sales ("Return is measured in realized terms").
+- USDT handling at flatten: configurable (`flatten.include_usdt`, default true).
 - freqtrade/Hummingbot semantic details were read from source but never executed; ratchet behaviour for gaps (stop fill price vs trigger) is not verified for Wallex.
 - agiprolabs numeric thresholds (3/4/5% daily, ladder) are the repo author's heuristics without cited evidence; our numbers are design choices, to be tuned in backtest/shadow.
 - Kelly drawdown table in agiprolabs ("full Kelly 50-80% max DD") is stated without derivation in the file; treat as indicative.

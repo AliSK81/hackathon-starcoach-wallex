@@ -1,5 +1,4 @@
 # Discovery: additional agentic / algorithmic trading repos not yet covered
-> **Correction (see [05c](05c-wallex-official-mcp.md)):** an official Wallex MCP exists at `https://api.wallex.ir/mcp` (52 tools). Statements below that no official MCP exists refer only to community repos.
 
 **Scope**: new open-source repos beyond the already-covered list (TradingAgents, ai-hedge-fund, Vibe-Trading, AI-Trader, AgenticTrading, FinRobot, TradingAgents-astock, nofx, CloddsBot, Hyper-Alpha-Arena, freqtrade, nautilus_trader, Lean, hummingbot, jesse, OctoBot, lumibot, ccxt, vectorbt, backtesting.py, qlib, FinGPT, FinRL, quant-trading, TA-Lib, Riskfolio-Lib, PyPortfolioOpt, skfolio, tradingview-mcp servers, alpaca-mcp-server, claude-trading-skills repos). Category 12. · **Researched**: 2026-10-21
 **Sources**: curated lists `LLMQuant/awesome-trading-agents`, `laplace0x/awesome-agent-trading`, `wilsonfreitas/awesome-quant`, `paperswithbacktest/awesome-systematic-trading` (READMEs fetched with `gh api .../readme`); WebSearch for Nof1 Alpha Arena clones and LLM-trading benchmarks; stars / last push / license verified with `gh api repos/OWNER/REPO` on 2026-10-21 (165 candidate repos from the first two lists checked in one batch). Repos read in more depth (shallow clone, nothing executed): `olaxbt/ai-market-maker@dd71150`, `mnemox-ai/tradememory-protocol@cb599bd`. Others: README only (commit shas from `gh api`: kraken-cli `aa56e59`, okx/agent-trade-kit `c8f7d76`, QuantAgent `2e64c7b`, atlas-gic `cf4349f`, intelligent-trading-bot `0f8748d`).
@@ -13,7 +12,7 @@
 - `asavinov/intelligent-trading-bot` (1883, MIT, Binance BTCUSDT): production-style ML signal pipeline with strict **offline training vs online prediction feature parity**, periodic retrain backtests, score in [-1, +1]. Best crypto ML-signal template found.
 - Nof1 Alpha Arena itself is closed; open clones are `wquguru/nof0` (2754, last push 2025-12-07), `SnowingFox/open-nof1.ai` (807, 2026-04-01), `195440/nof1.ai` (688, 2026-05-15, AGPL) and Hyper-Alpha-Arena (already covered). All trade Hyperliquid perps; none is relevant to a Toman spot account beyond prompt-design ideas.
 - LLM-trading **benchmarks** (StockBench `ChenYXxxx/stockbench`, LiveTradeBench `ulab-uiuc/live-trade-bench`, both PAPER repos) report that most LLM agents fail to beat buy-and-hold in their windows (StockBench paper abstract per search summary of arXiv 2510.02209): add a buy-and-hold and a no-LLM baseline to our own evaluation.
-- **No Wallex-specific code worth reusing exists.** Best hits: `SajjadKiani/wallex-mcp-server` (2 stars, 2025-05-08), `amiwrpremium/wallex-python` (4 stars, 2022), `MortezaFp/CryptoBasketBot` (0 stars, 2026-07-30, "AI swing" rebalancing bot for Wallex). `ccxt` has no Wallex/Nobitex module (listing of `python/ccxt/` via `gh api`, 105 `.py` files, no `wallex*`/`nobitex*`). Plan to write a thin Wallex client ourselves.
+- **Wallex has an official MCP (`https://api.wallex.ir/mcp`, see [05c](05c-wallex-official-mcp.md)); no third-party Wallex code is worth reusing.** Best community hits: `SajjadKiani/wallex-mcp-server` (2 stars, 2025-05-08), `amiwrpremium/wallex-python` (4 stars, 2022), `MortezaFp/CryptoBasketBot` (0 stars, 2026-07-30, "AI swing" rebalancing bot for Wallex). `ccxt` has no Wallex/Nobitex module (listing of `python/ccxt/` via `gh api`, 105 `.py` files, no `wallex*`/`nobitex*`). Plan to write a thin Wallex client ourselves.
 - No TradingAgents crypto fork that meets thresholds changes the architecture materially; the interesting ones are near-misses (below).
 
 ## Findings
@@ -88,7 +87,7 @@ Lesson from all of them: they hand the model account state + indicators and let 
 ### F. Wallex-specific code (exhaustive for GitHub repo search "wallex", "wallex trading bot", "wallex api python")
 | Repo | Stars | Last push | Notes |
 |---|---|---|---|
-| SajjadKiani/wallex-mcp-server | 2 | 2025-05-08 | FastMCP; tools `get_markets, get_balance, place_order, get_order_status, cancel_order, health`; no caps; see file 08 |
+| SajjadKiani/wallex-mcp-server | 2 | 2025-05-08 | Superseded by the official MCP (05c). FastMCP; tools `get_markets, get_balance, place_order, get_order_status, cancel_order, health`; no caps; see file 08 |
 | amiwrpremium/wallex-python, amiwrpremium/wallex | 4, 4 | 2022-08, 2022-11 | old Python SDK; likely outdated vs current API |
 | amirSamanQ/python-wallex | 0 | 2026-08-04 | Python client, unreviewed |
 | MortezaFp/CryptoBasketBot | 0 | 2026-07-30 | rebalancing and dip-catching bot for Wallex "with AI swing" (description); unreviewed |

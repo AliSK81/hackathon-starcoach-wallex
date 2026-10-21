@@ -1,5 +1,4 @@
 # Wallex API Integration (REST, WebSocket, MCP, community clients)
-> **Correction (see [05c](05c-wallex-official-mcp.md)):** an official Wallex MCP exists at `https://api.wallex.ir/mcp` (52 tools). Statements below that no official MCP exists refer only to community repos.
 
 **Scope**: Everything needed to talk to Wallex from our trading engine: auth, endpoints, schemas, limits, markets/precision/min-notional, order types, WebSocket, MCP servers, ccxt, community clients. · **Researched**: 2026-10-21 · **Sources**:
 - Official docs https://developers.wallex.ir/docs (all pages in `sitemap.xml` that matter were fetched: `create-api-key`, `basic-services-*`, `spot-*`, `socket-*`; Swagger JSON `/assets/files/spot-b9d06896d1009adc9ebc69b9a5495e7e.json` and `/assets/files/basic-services-89626420b5f06e4d7a2dc9206cdeb192.json`)
@@ -16,7 +15,7 @@
 - Candle history (`GET /v1/udf/history`) is shallow and quirky: 1-min data only ~19 days back and `resolution=1` returns `no_data` for windows > ~36 h; hourly ~29 days; daily ~799 days **[LIVE]**. Backtest data must be collected/stored by us early (day 0).
 - Private WebSocket (order/balance push) needs a JWT obtained with the **website login cookie** (`POST /v3/auth/token/refresh`), not the API key **[DOC]** -> for a bot, assume REST polling for order/balance state; use public WS for prices.
 - Fee rates are NOT in docs; `GET /v1/account/fee` (needs key) returns `makerFeeRate/takerFeeRate` per symbol **[DOC]**. Fees are 2 legs per round trip: must be measured at startup (never hard-code).
-- Wallex MCP: no official Wallex-hosted MCP found. Two community servers exist; the popular Python one (`SajjadKiani/wallex-mcp-server`) is **broken for ordering** (wrong paths, calls `.get` on a Pydantic model, wrong field names) -> do not use it for execution; write our own thin client (tools for the LLM, execution through our deterministic engine).
+- Wallex MCP: **official, Wallex-hosted** at `https://api.wallex.ir/mcp` (Streamable HTTP, header `X-API-Key`, 52 tools; details in [05c](05c-wallex-official-mcp.md)). Use it for the LLM's read tools. Execution still goes through our own thin client and risk gate, because the MCP enforces no order caps. The two community servers (`SajjadKiani/wallex-mcp-server`, `mhsenpc/wallex_mcp_server`) are superseded; the Python one is broken for ordering.
 - ccxt has **no** Wallex exchange (no `wallex.ts`/`wallex.py` in repo) **[CODE]**.
 
 ## Findings
@@ -151,8 +150,8 @@ Data-collection plan: pull and persist 1-min (in <=36 h chunks) + 1-h + 1-D for 
 - `otc_*` fields (instant-trade market) with `otc_min_notional: 90000`, `otc_max_notional` exist; OTC could be an alternative for dust liquidation (`/docs/otc-*` pages exist, not read in depth) **[?]**.
 - Margin, trade-credit, withdraw/IBAN endpoints exist; **out of scope and risky** (do not give the engine a withdraw-capable key).
 
-### 11. Wallex MCP servers
-**No official Wallex MCP found** (web searches; docs sitemap has no MCP page; `gh search` returns only community repos). The requirements doc says "Wallex MCP — connects AI agents to Wallex capabilities", so the organizers may distribute their own; ask for its URL **[?]**.
+### 11. Wallex MCP servers (official: see 05c; community servers below are superseded)
+**Official MCP exists**: `https://api.wallex.ir/mcp` (source: `https://api.wallex.ir/llm.txt`, `https://wallex.ir/landing/mcp/`, and live `initialize` + `tools/list` calls). Tool list and usage: [05c-wallex-official-mcp.md](05c-wallex-official-mcp.md). The community servers below were found earlier by search and are kept only as reference for their (poor) code quality.
 
 **A. `SajjadKiani/wallex-mcp-server@3b64501`** (Python, FastMCP, 2 stars; mcp.so listing "Wallex MCP Server") **[CODE]**
 - Tools registered: `health` (server.py:8), `get_balance` (tools/balance.py:6), `get_markets` (tools/markets.py:6), `place_order(order: OrderRequest)` (tools/order.py:6), `get_order_status(order_id)` (order.py:18), `cancel_order(order_id)` (order.py:30). README lists "resources" (`wallex://market/{symbol}` etc.) that **do not exist** in the code (README structure mismatch).
@@ -168,6 +167,13 @@ Data-collection plan: pull and persist 1-min (in <=36 h chunks) + 1-h + 1-D for 
 - **ccxt@51dfc97**: `ls ts/src | grep -i wallex` and `ls python/ccxt | grep -i wallex` -> empty; no Wallex in README/exchanges.json (grep). So no unified driver; freqtrade/hummingbot/nautilus have no Wallex connector either (not checked individually, but they are ccxt/own-adapter based). We write a ~300-line client.
 - **`amiwrpremium/wallex-python@5e30e4f`** (last commit 2022-08-17, `X-API-Key`, methods `place_order(symbol, order_type, side, quantity, price, client_id)`, `get_order_detail`, `cancel_order`, `get_open_orders`, `get_market_orders`) — targets the 2022 API (pre-redesign); low trust, schemas stale. Uses `requests`/`aiohttp` with a bare error handler (no retry).
 - Other GitHub hits (not reviewed in depth, quality unverified): `MohZeh/WallexApi`, `beh11111/wallex-bot`, `zeotrix/Arbitrage` (Wallex vs Nobitex price diff), `PhinixHQ/wallex-new-api-docs` (2022). Treat all as unmaintained references.
+
+### 13. Tradable universe (organizer rules, supplied by the team)
+- **Spot only, no leverage.** Margin, short and credit/prop tools are out of scope.
+- All Wallex markets are tradable except those in [wallex_inactive_markets.txt](wallex_inactive_markets.txt) (345 entries in `BASE/QUOTE` form; the source heading says "credit account" but its sentence says "trading account", so treat the list as forbidden for the competition account, the conservative reading). Normalize by removing `/` to match Wallex symbols (`BTC/TMN` -> `BTCTMN`). 92 listed entries do not exist on `/v1/markets` today.
+- Live check on 2026-10-21: of 373 spot markets, **120 remain tradable**. Most liquid tradable by 24h TMN volume: USDTTMN, BTCUSDT, ETHUSDT, PEPETMN, BTCTMN, PUMPTMN, USOONTMN, ETHTMN, XRPTMN, XAUTTMN, XRPUSDT, USOONUSDT, ARBTMN, BNBTMN, SOLTMN, XAUTUSDT, PEPEUSDT, DOGETMN, SOLUSDT, TRXTMN. BTC, ETH, XRP, SOL, PEPE, BNB, ARB and DOGE are not in the excluded list.
+- Enforce as a hard allowlist in the risk gate: reject any symbol that is in the excluded file or missing from the live `/v1/markets` response. Re-fetch `/v1/markets` on startup, since the list may change.
+- Source: pasted by the team from an organizer message (Telegram); the Telegram link is not fetchable.
 
 ## Reusable for our system
 - `GET /v1/markets` -> build `MarketRules` cache (step/tick decimals, minQty, minNotional) refreshed every 10 min; use it for all rounding/validation (mirrors freqtrade `amount_to_precision`/ccxt `TRUNCATE` for qty, `ROUND` for price).
@@ -191,7 +197,7 @@ Data-collection plan: pull and persist 1-min (in <=36 h chunks) + 1-h + 1-D for 
 
 ## Unverified / open questions
 - Which markets are "Wallex-approved/permitted" for the competition? (ask organizers; also whether USDT-quoted markets count and whether the final value is measured only in TMN).
-- Official MCP URL/tools from organizers.
+- Result shapes of official MCP tool calls (only `initialize` and `tools/list` were called; see 05c).
 - Maker/taker fee numbers for our account/tier; fee asset on BUY vs SELL; is a fee discount/zero-fee promo active for the competition account.
 - MARKET order request format: is `price` required (docs table says yes)? Can a BUY MARKET be sized by quote amount? Max `client_id` length and whether `-` is accepted (server-generated ids contain hyphens).
 - Full `status` enum (PARTIALLY_FILLED? EXPIRED? REJECTED?), HTTP/`code` list for insufficient balance, below-min-notional, bad precision, duplicate `client_id`, rate-limit (429?) — docs list none; capture them by deliberately provoking errors with tiny orders on day 1.

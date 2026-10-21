@@ -92,7 +92,7 @@
 1. **LLM = decision layer over a deterministic feature + gate pipeline** (strategy logic 40, AI 35, risk 30). The LLM chooses `{action, symbol, size_tier(S/M/L), confidence, thesis, invalidation}` from a compact feature table; code converts to quantities and bracket levels.
 2. **Cadence 15 min** (matches NoFx recommendation; 3-day window = ~288 calls, cheap) with an event trigger (volatility/volume spike) allowed to wake earlier but subject to the same cooldowns. Expect active but not hyperactive: target ~5-15 round trips/day total, to keep "activity" points without fee drag.
 3. **Gate (outside LLM)**, all enforced: per-position <= 20-25% of equity; max 2-3 open; no all-in; daily loss limit and trailing equity-drawdown halt -> flatten to Toman; min hold + per-symbol cooldown; expected-move >= 3x round-trip fee; SL required; spread/liquidity check from live order book; stale snapshot reject; kill-switch file.
-4. **Spot-only semantics**: drop short actions; "close" is the only bearish action; keep final-flat-to-Toman scheduler (hard requirement) before the official end with margin.
+4. **Spot-only semantics**: drop short actions; "close" is the only bearish action; keep a flatten-to-Toman command (optional `end_at` scheduler; the system itself is end-agnostic).
 5. **Fail-closed**: JSON parse failure or LLM timeout -> HOLD (never retry into a trade); 3 consecutive failures -> safe mode (exits only).
 6. Use low temperature and record raw output so judges can replay; include a rule-based fallback labelled as such only for exits, never entries (keeps "real AI use" honest).
 7. Show backtest + shadow: reuse HAA-style fee/slippage simulator; record LLM outputs during shadow and replay them in backtest (see file 09).

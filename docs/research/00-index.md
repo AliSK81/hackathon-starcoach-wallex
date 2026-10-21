@@ -12,7 +12,7 @@
 | [04-backtesting-shadow-mode.md](04-backtesting-shadow-mode.md) | Backtest and shadow fills, Broker interface, LLM replay | Backtest + shadow (20) |
 | [05-wallex-api-integration.md](05-wallex-api-integration.md) | Wallex endpoints, auth, markets, candles, MCP quality | Execution stability (15) |
 | [05b-execution-engine-patterns.md](05b-execution-engine-patterns.md) | Order state machine, retries, reconciliation, final liquidation | Execution stability |
-| [05c-wallex-official-mcp.md](05c-wallex-official-mcp.md) | **Official Wallex MCP** (`https://api.wallex.ir/mcp`, 52 tools); supersedes "no official MCP" in 05/08/12 | Real AI use, Execution stability |
+| [05c-wallex-official-mcp.md](05c-wallex-official-mcp.md) | **Official Wallex MCP** (`https://api.wallex.ir/mcp`, 52 tools) | Real AI use, Execution stability |
 | [06-signals-strategies.md](06-signals-strategies.md) | Features, regimes, fee break-even maths | Profit (90), Strategy logic |
 | [07-ml-rl-models.md](07-ml-rl-models.md) | ML/RL verdict, LightGBM tool, paper evidence | Real AI use |
 | [08-skills-mcp-agent-patterns.md](08-skills-mcp-agent-patterns.md) | Guarded write tools, agent frameworks, skill rules | Real AI use, Risk |
@@ -50,10 +50,11 @@
 - **LLM provider:** custom, chosen later. Keep the client behind an OpenAI-compatible `base_url`.
 - **API key:** supplied later via a gitignored `.env` (`WALLEX_API_KEY`). A read-only key is available for research if needed.
 
+- **Spot only, no leverage; fixed market allowlist:** all markets except [wallex_inactive_markets.txt](wallex_inactive_markets.txt) (120 of 373 tradable on 2026-10-21; see 05 section 13).
+
 ## Still open (not blocking)
 
-1. Whether margin/OTC markets are allowed; default to spot long-only until confirmed.
-2. Real fee rates: read with `wallex_basic_get_account_fees` once a key is set.
+1. Real fee rates: read with `wallex_basic_get_account_fees` once a key is set.
 
 ## Licenses to respect
 
