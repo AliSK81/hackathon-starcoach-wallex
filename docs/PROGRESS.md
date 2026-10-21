@@ -106,3 +106,29 @@ Not done yet:
 
 Next change idea:
 - Save 1-minute and 1-hour candles to disk for a few liquid allowed markets.
+
+### Change 3 — `wx candles` saves 1-minute and 1-hour candles to disk — 2026-10-22
+Phase: 1, step 2
+How to see it: `uv run wx candles` (or `uv run wx candles BTCTMN --days 60`)
+Proof it works: the first run saved 30 days for 6 markets in 2 min 13 s: about 43,100 1-minute and 719 1-hour candles per market. A second run added only 1 new candle. `uv run pytest` passed 15 tests, with no internet.
+
+Research: research file 05, section 8. Two claims were wrong today:
+- 1-minute history goes back at least 120 days, not about 19.
+- One request can cover up to about 46 hours of 1-minute candles, not 36. 48 hours gives `no_data`.
+Also seen: quiet minutes come back as candles with zero volume. Real gaps exist, the same in every market (for example 80 minutes on 2026-09-22 from 12:39 UTC). A narrow re-fetch shows the same gap, so Wallex has no data there.
+Questions: none
+Decisions: D12.
+
+Shipped:
+- `fetch_candles` in `src/wx/wallex.py`.
+- `src/wx/candles.py`: fetches in windows of 720 candles, oldest first. Each run continues from the last saved candle. On an error it keeps what it has, so the next run continues.
+- `wx candles [SYMBOL ...] [--days N]`: refuses any market that is not allowed. Exits with 1 if anything failed.
+- `tests/test_candles.py`: 5 tests.
+
+Not done yet:
+- Gaps are kept, not filled. A later phase decides how to fill them.
+- If `--days` grows later, older candles are not back-filled for a file that already exists.
+- Nothing runs `wx candles` on a schedule yet.
+
+Next change idea:
+- A loop that reads live prices for the default markets every minute, logs them, and survives network errors.

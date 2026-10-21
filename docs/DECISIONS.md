@@ -21,6 +21,7 @@ This file lists decisions we already made, and facts we checked.
 | D9 | Python 3.12 or newer, run with `uv`. The command is `wx`. Libraries are added only when a phase needs them. | 2026-10-22 | Claude |
 | D10 | Setting names: `WALLEX_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`. `.env.example` must list the same names. A test checks this. | 2026-10-22 | Claude |
 | D11 | The forbidden-market list lives in the code: [inactive_markets.txt](../src/wx/inactive_markets.txt). Saved Wallex data goes in `data/`, which git ignores. HTTP uses the Python standard library until we need more. | 2026-10-22 | Claude |
+| D12 | Default markets for data: BTCTMN, ETHTMN, SOLTMN, XRPTMN, PEPETMN, USDTTMN (liquid and allowed, from research file 05). Candles are saved as CSV in `data/candles/<SYMBOL>_<1m or 1h>.csv`. Columns `t,o,h,l,c,v`. `t` is Unix seconds (UTC). Values stay as Wallex sends them. Gaps are kept, not filled. | 2026-10-22 | Claude |
 
 ## Checked facts
 

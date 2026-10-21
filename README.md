@@ -18,6 +18,12 @@ uv run wx markets
 
 This reads all Wallex markets, shows how many we may trade, and saves a copy in `data/`. It needs no key.
 
+```bash
+uv run wx candles
+```
+
+This saves 1-minute and 1-hour candles for six markets in `data/candles/`. The first run gets 30 days. Later runs add only new candles. It needs no key.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

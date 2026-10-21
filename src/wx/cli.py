@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from wx import __version__
+from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
 from wx.config import KEYS, Settings
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.wallex import WallexError, fetch_markets
@@ -39,14 +40,43 @@ def run_markets() -> int:
     return 0
 
 
+def run_candles(symbols: list[str], days: int) -> int:
+    symbols = [s.upper() for s in symbols] or list(DEFAULT_SYMBOLS)
+    try:
+        allowed = allowed_markets(fetch_markets(), load_inactive())
+    except WallexError as error:
+        print(f"Could not read markets: {error}")
+        return 1
+    refused = [s for s in symbols if s not in allowed]
+    if refused:
+        print(f"Not allowed or not on Wallex: {', '.join(refused)}")
+        return 1
+    failed = 0
+    for symbol in symbols:
+        for size in SIZES:
+            try:
+                added = update_candles(symbol, size, DATA_DIR, days)
+                print(f"  {symbol:<10} {size}: {added:>6} new candles")
+            except WallexError as error:
+                failed += 1
+                print(f"  {symbol:<10} {size}: failed, kept what we had. {error}")
+    print(f"Saved in {DATA_DIR / 'candles'}")
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wx", description="Wallex trading bot.")
     parser.add_argument("--version", action="version", version=f"wx {__version__}")
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("markets", help="list allowed markets and save a snapshot")
+    candles = commands.add_parser("candles", help="save 1-minute and 1-hour candles")
+    candles.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    candles.add_argument("--days", type=int, default=30, help="how far back on the first run (default 30)")
     args = parser.parse_args(argv)
     if args.command == "markets":
         return run_markets()
+    if args.command == "candles":
+        return run_candles(args.symbols, args.days)
     print(status(Settings.load()))
     return 0
 
