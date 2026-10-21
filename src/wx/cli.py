@@ -1,11 +1,14 @@
 import argparse
+import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
 from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
 from wx.config import KEYS, Settings
+from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
 from wx.rules import MarketRules
@@ -127,6 +130,36 @@ def run_rules(symbols: list[str]) -> int:
     return 0
 
 
+AI_CHECK = [
+    {"role": "system", "content": "You are a trading assistant. Reply only with one JSON object."},
+    {
+        "role": "user",
+        "content": 'BTC rose 2% in the last hour and RSI(14) is 72. '
+        'Reply with {"action": "BUY" or "SELL" or "HOLD", "reason": "<one sentence>"}.',
+    },
+]
+
+
+def run_ai(settings: Settings) -> int:
+    missing = [k for k in ("LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY") if not settings.is_set(k)]
+    if missing:
+        print(f"Missing in .env: {', '.join(missing)}")
+        return 1
+    base_url = settings.get("LLM_BASE_URL")
+    print(f"Asking {settings.get('LLM_MODEL')} at {urlparse(base_url).netloc} ...")
+    try:
+        reply = chat(base_url, settings.get("LLM_MODEL"), settings.get("LLM_API_KEY"), AI_CHECK, json_mode=True)
+        answer = parse_json(reply.text)
+    except LLMError as error:
+        print(f"The AI check failed: {error}")
+        return 1
+    tokens = reply.usage.get("total_tokens", "unknown")
+    print(f"Model: {reply.model}. Answered in {reply.seconds} s. Tokens: {tokens}.")
+    print(f"Answer: {json.dumps(answer, ensure_ascii=False)}")
+    print(f"Reasoning sent: {'yes, ' + str(len(reply.reasoning)) + ' characters' if reply.reasoning else 'no'}")
+    return 0
+
+
 def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
     markets = pick_markets(symbols)
     if markets is None:
@@ -155,12 +188,15 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("account", help="read balances and fees (needs WALLEX_API_KEY)")
     rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
     rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    commands.add_parser("ai", help="check the AI settings with one small call")
     args = parser.parse_args(argv)
     # Wallex messages can be in Persian. Never crash on a console that can't show them.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="backslashreplace")
     if args.command == "account":
         return run_account(Settings.load())
+    if args.command == "ai":
+        return run_ai(Settings.load())
     if args.command == "markets":
         return run_markets()
     if args.command == "candles":

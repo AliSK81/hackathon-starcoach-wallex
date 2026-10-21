@@ -25,6 +25,7 @@ This file lists decisions we already made, and facts we checked.
 | D13 | Live prices come from `/v1/depth` (best bid and ask), not from `/v1/markets` stats, which can be stale. The price log is `data/prices/<UTC date>.jsonl`, one line per cycle, with `time`, `cycle`, `prices` and `errors`. A loop never stops because of an error. It logs the error and waits for the next beat. | 2026-10-22 | Claude |
 | D14 | The account behind `WALLEX_API_KEY` is the competition account. It started with 5,000,000 TMN (F2). | 2026-10-22 | team |
 | D15 | Keep 120 days of candles (`wx candles` default). Wallex has at least that much (change 7). | 2026-10-22 | team |
+| D16 | AI calls use temperature 0 and JSON mode. We keep the model's own reasoning text, so each decision can log it. An AI error message never contains the key. | 2026-10-22 | Claude |
 
 ## Checked facts
 
@@ -42,6 +43,9 @@ Facts checked with live Wallex data, our own key, or a real order. Research note
 | F8 | Minimum order value | 50,000 TMN on all 187 TMN markets. 1 USDT on all 186 USDT markets. | 2026-10-22 | `/v1/markets` |
 | F9 | `isMarketTypeEnable` is true on only 7 markets: BTCTMN, ETHTMN, USDTTMN, XAUTTMN, BTCUSDT, ETHUSDT, XAUTUSDT. It is false on SOLTMN, XRPTMN and PEPETMN. | It probably means MARKET orders are allowed. Not confirmed. | 2026-10-22 | `/v1/markets` |
 | F10 | Rules for our default markets | See the table below. | 2026-10-22 | `wx rules` |
+| F11 | Our AI is an OpenAI-compatible gateway (LiteLLM, then vLLM) at `ai-gateway.mohaymen.ir`. The model `mohaymen/qwen3.8-27b` reports itself as `qwen3.8-27b`. | A small call takes 3 to 4 s and about 430 tokens. | 2026-10-22 | `wx ai` |
+| F12 | The AI supports JSON mode (`response_format`). It sends its thinking in a separate `reasoning_content` field, not in the answer. | works | 2026-10-22 | `wx ai` |
+| F13 | A wrong AI key gives HTTP 401. The error message repeats the key we sent. | Our code replaces it with `***`. | 2026-10-22 | `wx ai` with a wrong key |
 
 #### Market rules for the default markets (F10)
 

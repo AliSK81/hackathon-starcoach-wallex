@@ -42,6 +42,12 @@ uv run wx rules
 
 This shows the order rules for the six markets: decimals, minimum quantity, and minimum order value. It needs no key.
 
+```bash
+uv run wx ai
+```
+
+This asks the AI one small question, to check the AI settings. It needs `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` in `.env`.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

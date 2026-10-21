@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 2, not started (Phase 1 done)
+- **Current phase:** 2, in progress
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -19,7 +19,7 @@ Update this after every change.
 | Item | Needed by | Status |
 |---|---|---|
 | Wallex key (read) in `.env` | Phase 1 | Works (F1). |
-| AI provider, model, URL, and key in `.env` | Phase 2 | In `.env`. Not tested yet. |
+| AI provider, model, URL, and key in `.env` | Phase 2 | Works (F11). |
 | A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
 | Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
 | Which account is the competition account | Phase 4 | Done: the account behind `WALLEX_API_KEY` (D14). |
@@ -235,3 +235,28 @@ Not done yet:
 
 Next change idea:
 - Phase 2 plan. Then test the AI settings in `.env` with one small call.
+
+### Change 8 — Phase 2 plan, and `wx ai` checks the AI settings — 2026-10-22
+Phase: 2, step 1
+How to see it: `uv run wx ai`
+Proof it works:
+- Live: `wx ai` asked the model one small trading question. It answered `HOLD` with a reason in valid JSON, in 4.3 s and 426 tokens. Exit 0.
+- Wrong key: it printed `HTTP 401` and exited with 1. The provider repeated the key in its error. Our output showed `***` instead.
+- `uv run pytest` passed 42 tests, with no internet.
+
+Research: research files 01, 02 and 06, for the plan. They agree: code computes the indicators, the AI picks and explains, and a bad AI answer becomes "do nothing".
+Questions: none
+Decisions: D16. Facts F11 to F13.
+
+Shipped:
+- Phase plan: [phases/phase-2-decide.md](phases/phase-2-decide.md).
+- `src/wx/llm.py`: one chat call to any OpenAI-compatible API. It keeps the model's reasoning, removes `<think>` parts from the answer, and reads the JSON in an answer. Any error becomes an `LLMError` without the key.
+- `wx ai`: the check above. It says which settings are missing.
+- `tests/test_llm.py`: 8 tests.
+
+Not done yet:
+- No retry. A failed call is just reported.
+- We don't know the AI's request limits.
+
+Next change idea:
+- `wx features`: indicators for each market, from saved candles and the live order book.
