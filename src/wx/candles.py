@@ -25,6 +25,9 @@ PAUSE = 0.2
 
 COLUMNS = ("t", "o", "h", "l", "c", "v")
 
+# How much history to keep. See DECISIONS D15.
+KEEP_DAYS = 120
+
 
 def candle_path(data_dir: Path, symbol: str, size: str) -> Path:
     return data_dir / "candles" / f"{symbol}_{size}.csv"

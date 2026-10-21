@@ -48,6 +48,12 @@ uv run wx ai
 
 This asks the AI one small question, to check the AI settings. It needs `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` in `.env`.
 
+```bash
+uv run wx features
+```
+
+This updates the candles, reads the live order book, and prints the indicators the AI will use, for the same six markets. With `WALLEX_API_KEY` it also shows the round-trip cost.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

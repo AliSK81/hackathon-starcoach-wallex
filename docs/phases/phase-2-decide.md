@@ -15,6 +15,6 @@ Goal: every cycle, the bot computes indicators from live data. The AI makes a de
 ## Checklist
 
 - [x] `wx ai`: one small call checks the AI settings. Write what we learn in DECISIONS.md.
-- [ ] `wx features`: indicators for each market, from saved candles and the live order book.
+- [x] `wx features`: indicators for each market, from saved candles and the live order book.
 - [ ] `wx decide`: one AI decision from the indicators, checked and logged.
 - [ ] `wx run`: a loop that updates candles, computes indicators, asks the AI, and logs every cycle. It survives errors.

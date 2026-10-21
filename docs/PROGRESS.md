@@ -260,3 +260,30 @@ Not done yet:
 
 Next change idea:
 - `wx features`: indicators for each market, from saved candles and the live order book.
+
+### Change 9 — `wx features` computes indicators for each market — 2026-10-22
+Phase: 2, step 2
+How to see it: `uv run wx features` (or `uv run wx features BTCTMN`)
+Proof it works:
+- Live: it printed 26 features for the 6 default markets in 10 s, and exited with 0. Five markets were `trend_up` and SOLTMN was `range`.
+- The maths matches the `ta` library on the last 500 BTCTMN and PEPETMN hours: RSI, ATR, ADX, +DI, -DI, MACD and EMA 20 are equal. EMA 200 was 0.05% to 0.08% off, because of how the average starts. We now use 1,000 hours, so this matters even less.
+- `wx features TONTMN` refused, with exit 1.
+- `uv run pytest` passed 53 tests, with no internet.
+
+Research: research file 06, sections 2 and 6 and the feature list. We kept about half of its list.
+Questions: none
+Decisions: D17. Fact F14.
+
+Shipped:
+- `src/wx/indicators.py`: EMA, Wilder average, RSI, ATR, ADX with +DI and -DI, MACD histogram, z-score, percent rank.
+- `src/wx/features.py`: `FEATURES` names each feature and says what it means. `build_features` computes them. `market_features` first brings the candles up to date and reads the live book.
+- `wx features [SYMBOL ...]`: prints one row per feature. With the key, it adds the round-trip cost.
+- `tests/test_features.py`: 11 tests.
+
+Not done yet:
+- Round-trip cost is 0.6% to 1.2% (F14). A trade must move more than that just to break even.
+- Markets are read one after another, which takes about 10 s.
+- No BTC-led or Toman-drift feature across markets yet. The AI sees BTCTMN and USDTTMN among the markets.
+
+Next change idea:
+- `wx decide`: send these features to the AI, check its JSON answer, and log the decision.

@@ -6,8 +6,9 @@ from urllib.parse import urlparse
 
 from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
-from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
+from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
+from wx.features import FEATURES, market_features
 from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
@@ -130,6 +131,51 @@ def run_rules(symbols: list[str]) -> int:
     return 0
 
 
+def features_report(table: dict[str, dict]) -> str:
+    """One row per feature, one column per market."""
+    symbols = list(table)
+    lines = [f"{'':<22}" + "".join(f"{s:>14}" for s in symbols)]
+    for name in FEATURES:
+        cells = []
+        for s in symbols:
+            value = table[s][name]
+            if isinstance(value, float) and name == "price":
+                value = f"{value:,.0f}" if value >= 1000 else f"{value:g}"
+            cells.append(f"{'-' if value is None else str(value):>14}")
+        lines.append(f"{name:<22}" + "".join(cells))
+    return "\n".join(lines)
+
+
+def taker_fees(settings: Settings) -> dict[str, float]:
+    """Taker fee per market, or nothing if the key is missing or Wallex fails."""
+    key = settings.get("WALLEX_API_KEY")
+    if not key:
+        print("No WALLEX_API_KEY, so no round-trip cost.")
+        return {}
+    try:
+        return {s: float(r["takerFeeRate"]) for s, r in fetch_fees(key).items()}
+    except WallexError as error:
+        print(f"Could not read fees, so no round-trip cost: {error}")
+        return {}
+
+
+def run_features(symbols: list[str], settings: Settings) -> int:
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    fees = taker_fees(settings)
+    table, failed = {}, 0
+    for symbol in markets:
+        try:
+            table[symbol] = market_features(symbol, DATA_DIR, fees.get(symbol))
+        except (WallexError, ValueError) as error:
+            failed += 1
+            print(f"  {symbol}: failed. {error}")
+    if table:
+        print(features_report(table))
+    return 1 if failed else 0
+
+
 AI_CHECK = [
     {"role": "system", "content": "You are a trading assistant. Reply only with one JSON object."},
     {
@@ -180,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("markets", help="list allowed markets and save a snapshot")
     candles = commands.add_parser("candles", help="save 1-minute and 1-hour candles")
     candles.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    candles.add_argument("--days", type=int, default=120, help="how far back to keep (default 120)")
+    candles.add_argument("--days", type=int, default=KEEP_DAYS, help=f"how far back to keep (default {KEEP_DAYS})")
     watcher = commands.add_parser("watch", help="read live prices on a fixed beat and log them")
     watcher.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")
@@ -189,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
     rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     commands.add_parser("ai", help="check the AI settings with one small call")
+    features = commands.add_parser("features", help="indicators per market, from candles and the live book")
+    features.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
     # Wallex messages can be in Persian. Never crash on a console that can't show them.
     if hasattr(sys.stdout, "reconfigure"):
@@ -197,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_account(Settings.load())
     if args.command == "ai":
         return run_ai(Settings.load())
+    if args.command == "features":
+        return run_features(args.symbols, Settings.load())
     if args.command == "markets":
         return run_markets()
     if args.command == "candles":
