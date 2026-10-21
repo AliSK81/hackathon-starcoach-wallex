@@ -15,4 +15,4 @@ Goal: the bot reads real Wallex data, saves it, and knows the trading rules.
 - [ ] Trading rules per market (decimals, minimum size) are ready for later code.
 - [x] Save candle history to disk for a few markets (1-minute and 1-hour).
 - [x] A loop that reads live prices and logs them. It survives network errors.
-- [ ] With our key: read balances and fees. Write them in DECISIONS.md.
+- [x] With our key: read balances and fees. Write them in DECISIONS.md.

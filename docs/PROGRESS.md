@@ -18,7 +18,7 @@ Update this after every change.
 
 | Item | Needed by | Status |
 |---|---|---|
-| Wallex key (read) in `.env` | Phase 1 | In `.env`. Not tested yet. |
+| Wallex key (read) in `.env` | Phase 1 | Works (F1). |
 | AI provider, model, URL, and key in `.env` | Phase 2 | In `.env`. Not tested yet. |
 | A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
 | Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
@@ -160,3 +160,32 @@ Not done yet:
 
 Next change idea:
 - Use the key: read balances and fees, and write them in DECISIONS.md. This is the last Phase 1 item.
+
+### Change 5 — `wx account` reads balances and fees with our key — 2026-10-22
+Phase: 1, step 4
+How to see it: `uv run wx account`
+Proof it works:
+- Live: it printed 5,000,000 TMN and the fee rates, and exited with 0. It saved `data/account/20261021T230003Z.json`.
+- Wrong key: it printed `HTTP 401 1201 invalid API key format` and exited with 1.
+- The key does not appear in the output, the saved account file, or any other file in `data/`.
+- `uv run pytest` passed 26 tests, with no internet.
+
+Research: research file 05, sections 5 and 6. Fee rates were unknown. Now they are F3 to F6.
+Questions: none
+Decisions: none. Facts F1 to F6.
+
+Shipped:
+- `src/wx/wallex.py`: the key can go in the `x-api-key` header. HTTP errors now show the Wallex code and message. New: `fetch_balances`, `fetch_fees`.
+- `src/wx/account.py`: non-zero balances with free = value - locked, fee groups, and a saved snapshot.
+- `wx account`: prints balances and fees. It says so if the key is missing.
+- `wx` no longer crashes when it prints a Persian message on a console that can't show it.
+- `tests/test_account.py`: 7 tests.
+
+Bug found and fixed: the fee reply has a `metaData` entry that is not a market. The first live run crashed on it.
+
+Not done yet:
+- We don't know if this key can trade. We will only learn that in Phase 4.
+- The market rules (decimals, minimum size) are still not in DECISIONS.md or used by code.
+
+Next change idea:
+- Market rules for the default markets: load them from `/v1/markets`, write them in DECISIONS.md, and add round-to-rules helpers. This finishes Phase 1.

@@ -30,6 +30,12 @@ uv run wx watch
 
 This reads live prices for the same six markets every minute and logs them in `data/prices/`. Network errors are logged, and it keeps going. Ctrl+C stops it. It needs no key.
 
+```bash
+uv run wx account
+```
+
+This reads our balances and fee rates and saves a copy in `data/account/`. It needs `WALLEX_API_KEY` in `.env`.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

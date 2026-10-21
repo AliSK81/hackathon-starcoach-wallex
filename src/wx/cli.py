@@ -1,12 +1,14 @@
 import argparse
+import sys
 from pathlib import Path
 
 from wx import __version__
+from wx.account import fee_groups, nonzero_balances, save_account
 from wx.candles import DEFAULT_SYMBOLS, SIZES, update_candles
 from wx.config import KEYS, Settings
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
-from wx.wallex import WallexError, fetch_markets
+from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
 
@@ -73,6 +75,34 @@ def run_candles(symbols: list[str], days: int) -> int:
     return 1 if failed else 0
 
 
+def account_report(held: dict[str, dict], fees: dict[str, dict]) -> str:
+    lines = ["Balances (not zero):"]
+    for asset, b in held.items():
+        lines.append(f"  {asset:<8} value {b['value']:>14}  locked {b['locked']:>10}  free {b['free']:>14}")
+    if not held:
+        lines.append("  none")
+    lines.append("Fees (maker / taker):")
+    for (quote, maker, taker), count in sorted(fee_groups(fees).items()):
+        lines.append(f"  {quote:<5} markets: {maker * 100:.2f}% / {taker * 100:.2f}%  ({count} markets)")
+    return "\n".join(lines)
+
+
+def run_account(settings: Settings) -> int:
+    key = settings.get("WALLEX_API_KEY")
+    if not key:
+        print("WALLEX_API_KEY is missing. Put it in .env.")
+        return 1
+    try:
+        held = nonzero_balances(fetch_balances(key))
+        fees = fetch_fees(key)
+    except WallexError as error:
+        print(f"Could not read the account: {error}")
+        return 1
+    print(account_report(held, fees))
+    print(f"Saved: {save_account(held, fees, DATA_DIR)}")
+    return 0
+
+
 def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
     symbols = check_symbols(symbols)
     if symbols is None:
@@ -97,7 +127,13 @@ def main(argv: list[str] | None = None) -> int:
     watcher.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")
     watcher.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
+    commands.add_parser("account", help="read balances and fees (needs WALLEX_API_KEY)")
     args = parser.parse_args(argv)
+    # Wallex messages can be in Persian. Never crash on a console that can't show them.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
+    if args.command == "account":
+        return run_account(Settings.load())
     if args.command == "markets":
         return run_markets()
     if args.command == "candles":

@@ -30,12 +30,17 @@ Facts checked with our own key or a real order. Research notes from 2026-10-21 d
 
 | ID | Fact | Value | Checked on | How |
 |---|---|---|---|---|
-| — | _none yet_ | | | |
+| F1 | Our Wallex key in `.env` can read balances and fees. A wrong key gives HTTP 401, code 1201. | works. Whether it can trade is unknown. | 2026-10-22 | `wx account` |
+| F2 | Account balance | 5,000,000 TMN, nothing locked, no coins. | 2026-10-22 | `wx account` |
+| F3 | Fees on all 187 TMN markets | maker 0.25%, taker 0.30% | 2026-10-22 | `wx account` (`/v1/account/fee`) |
+| F4 | Fees on all 186 USDT markets | maker 0.10%, taker 0.13% | 2026-10-22 | `wx account` |
+| F5 | A buy and a sell on a TMN market, both as taker | costs 0.60% of the trade, plus the spread | 2026-10-22 | from F3 |
+| F6 | Fees depend on recent trade volume. The fee reply has a `metaData` entry with volume levels in Toman: 0, 100M, 1B, 3B, 10B, 20B. Our recent volume is 0. | Rates for the higher levels are unknown. | 2026-10-22 | `/v1/account/fee` |
 
 ### Still unknown
 
 Check each of these when a change needs it:
-- Our fee rates. Is the fee on a BUY taken in the coin or in Toman?
+- Is the fee on a BUY taken in the coin or in Toman?
 - Are `stepSize` and `tickSize` numbers of decimals, or step sizes?
 - How to send a MARKET order. Is a price required? Can we say "spend X Toman"?
 - Order status values and error codes (no money, too small, bad precision, duplicate ID, too many requests).
