@@ -644,3 +644,31 @@ Not done yet:
 
 Next change idea:
 - Start live trading with the agent. Keep the shadow agent running next to it for comparison.
+
+### Change 23 — research rules tested one by one, a bull and bear debate, memory fed to the AI, replay and a chained log — 2026-10-22
+Phase: 4, 6 and 7
+How to see it: `uv run python scripts/test_risk_rules.py`, `uv run wx backtest --hours 12`, `uv run wx agent --shadow`, `uv run wx verify-log`
+Proof it works:
+- Each risk rule from research file 03 was tested alone in 12-hour windows on both market sets (F48). Three rules won on both and are on (D38). Take-profit lost badly and is off.
+- With them, the 12-hour average went from -0.074% to -0.038% on our markets and from -0.176% to -0.077% on the 12 others. The worst window went from -2.69% to -1.43%. It is still not positive on average.
+- A real shadow cycle ran with the new graph and tools.
+- `uv run pytest` passed 153 tests. `uvx ruff check src tests` is clean.
+
+Research: files 01, 02, 03, 08, 09 and 12 (the union of roles, tools, memory and risk rules of the agents studied).
+Questions: the user asked for every missing item and for a profitable system.
+Decisions: D38 to D40. Fact F48.
+
+Shipped:
+- `risk.py`: cost in the size, minimum edge, trade cap, and (off) cooldowns, soft drawdown, losing streak, take-profit. `Ledger` of buys and exits.
+- `trades.py`: an optional take-profit in `trade()`.
+- `brain.py`: bull and bear nodes in parallel, the officer as judge, lessons losses first, theses per position, `get_candles`, `get_portfolio`, `check_order`, safe mode, a token budget, a halt flag.
+- `wallex_mcp.py`: the cost of our order size from the book, and candles from the MCP server.
+- `llm_cache.py`: every AI answer saved, and replayed with `WX_LLM_REPLAY=1`. `decide.py`: a hash-chained log and `wx verify-log`.
+- `runner.py`: halt after repeated failures, and the kill file.
+
+Not done yet:
+- A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.
+- The bull and bear debate has not yet met a live candidate in shadow.
+
+Next change idea:
+- Go live with the agent. Keep the shadow agent next to it.

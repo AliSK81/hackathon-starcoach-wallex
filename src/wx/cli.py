@@ -257,6 +257,20 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
     return run(brain, DATA_DIR, name, interval, cycles, saver)
 
 
+def run_verify_log(day: str | None) -> int:
+    """Check the hash chain of the agent's decision log for one UTC day (default: today)."""
+    from wx.decide import verify_chain
+    path = DATA_DIR / "decisions" / f"{day or f'{datetime.now(UTC):%Y-%m-%d}'}.jsonl"
+    if not path.is_file():
+        print(f"No log at {path}")
+        return 1
+    checked, problems = verify_chain(path)
+    print(f"{path}: {checked} chained records, {'no problems' if not problems else len(problems)} problems")
+    for p in problems:
+        print("  " + p)
+    return 1 if problems else 0
+
+
 def run_live_report() -> int:
     """The live book from data/live/book.json, without calling Wallex."""
     path = DATA_DIR / "live" / "book.json"
@@ -489,6 +503,8 @@ def main(argv: list[str] | None = None) -> int:
     agent.add_argument("--no-officer", action="store_true", help="skip the risk officer AI (faster cycles)")
     beat(agent, DECIDE_EVERY)
     command("live", "show the live book (no Wallex call)", symbols=False)
+    command("verify-log", "check the hash chain of the agent's decision log", symbols=False).add_argument(
+        "day", nargs="?", default=None, help="UTC day, e.g. 2026-10-22 (default today)")
     command("kill", "KILL SWITCH: cancel every open order and sell every live position")
     command("order-test", "place a minimum buy 20%% under the price, read it back, cancel it", symbols=False
             ).add_argument("symbol", nargs="?", default="USDTTMN")
@@ -524,6 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         "agent": lambda: run_agent(a.symbols, Settings.load(), a.live, a.end_at, a.interval, a.cycles,
                                    not a.no_officer),
         "live": lambda: run_live_report(),
+        "verify-log": lambda: run_verify_log(a.day),
         "kill": lambda: run_kill(a.symbols, Settings.load()),
         "order-test": lambda: run_order_test(a.symbol, Settings.load()),
         "replay": lambda: run_replay_cmd(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,

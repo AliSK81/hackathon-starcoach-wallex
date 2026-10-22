@@ -9,7 +9,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from wx.risk import Account, Verdict
+from wx.risk import Account, Ledger, Verdict
 from wx.shadow import Book
 from wx.trades import History
 
@@ -56,6 +56,11 @@ class ShadowExecutor:
 
     def held(self) -> set[str]:
         return self.book.held()
+
+    def ledger(self) -> Ledger:
+        """Buys and exits so far, for the trade cap and cooldowns."""
+        return Ledger([[o.t, o.symbol] for o in self.book.orders],
+                      [[o.exit_t, o.symbol, o.net_pct, ""] for o in self.book.orders if o.status == "closed"])
 
     def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int) -> dict:
         order = self.book.place(symbol, setup, f, verdict, now, self.log)

@@ -81,6 +81,10 @@ class History:
                 return int(c[0]) + MINUTE, stop
         return None
 
+    def first_reach(self, start: int, end: int, price: float) -> int | None:
+        """End of the first 1-minute candle in [start, end) that traded at or above price, or None."""
+        return next((int(c[0]) + MINUTE for c in self.candles(start, end) if c[2] >= price), None)
+
     def features_at(self, t: int, spread_pct: float, taker_fee: float | None) -> dict:
         """The features as they were at t. Only candles that ended by t are used."""
         h = bisect.bisect_right(self.hour_starts, t - HOUR)
@@ -103,7 +107,8 @@ class Trade:
 
 
 def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders: str,
-          features_at: Callable[[int], dict | None], now: int | None = None) -> Trade | None:
+          features_at: Callable[[int], dict | None], now: int | None = None, take_profit_pct: float = 0.0
+          ) -> Trade | None:
     """How a buy at t through `setup` plays out, up to `now` (or to the end of the data).
 
     Entry. "taker": at the mid price now. "limit": at the bid, only if the price
@@ -113,6 +118,8 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
     Costs. "taker": round_trip_cost_pct. "limit": the maker fee in, the maker fee
     out on a rule exit, the taker fee plus half the spread out on a stop.
     With `now`, a trade that has not exited yet comes back open (exit_t None).
+    take_profit_pct: a resting limit sell that far above the entry (maker fee). If the stop and
+    the target fall in the same minute, the stop counts.
     """
     end = history.end if now is None else now
     if orders == "taker":
@@ -134,9 +141,13 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
         return Trade(entry_t, entry, exit_t, (price / entry - 1) * 100 - cost(reason == "stop"), reason)
 
     stop, rule = entry * (1 - stop_pct / 100), SETUPS[setup].exit
+    target = entry * (1 + take_profit_pct / 100) if take_profit_pct else None
     start, hour = entry_t, math.ceil(entry_t / HOUR) * HOUR
     while True:
         hit = history.first_touch(start, min(hour, end), stop)
+        reached = history.first_reach(start, min(hour, end), target) if target else None
+        if reached and (not hit or reached < hit[0]):
+            return closed(reached, target, "take profit")
         if hit:
             return closed(*hit, "stop")
         if hour > end:

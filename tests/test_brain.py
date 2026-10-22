@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from wx.brain import Brain, build_graph, check_plan, skills_index
-from wx.risk import Account, Limits
+from wx.risk import Account, Ledger, Limits
 
 NOW = 2_000_000_000
 
@@ -50,6 +50,9 @@ class FakeExecutor:
     def held(self):
         return set(self._positions)
 
+    def ledger(self):
+        return Ledger([[0, s] for s, _, _ in self.bought], [])
+
     def buy(self, symbol, setup, f, verdict, now):
         self.bought.append((symbol, setup, verdict.tmn))
         return {"placed": True}
@@ -74,7 +77,7 @@ def brain(answers, table, executor=None, end_at=None, officer=False):
               executor=executor or FakeExecutor(), features=lambda: (json.loads(json.dumps(table)), {}),
               micro=lambda s: {"book": {"imbalance_1pct": -0.5}, "flow": {"buy_share": 0.2}},
               closes=lambda s, h, now: [1.0, 1.1], store=InMemoryStore(), log=logs.append, end_at=end_at,
-              officer=officer, clock=lambda: NOW)
+              officer=officer, debate=False, clock=lambda: NOW)
     return b, logs
 
 

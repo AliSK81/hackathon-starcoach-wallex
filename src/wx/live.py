@@ -22,7 +22,7 @@ from pathlib import Path
 
 from wx.orders import OrderState, Trader, new_client_id
 from wx.prices import append_log
-from wx.risk import Account, Limits, Verdict, update_peak
+from wx.risk import Account, Ledger, Limits, Verdict, update_peak
 from wx.rules import MarketRules
 from wx.setups import SETUPS
 from wx.trades import FILL_WINDOW
@@ -104,6 +104,11 @@ class LiveExecutor:
 
     def held(self) -> set[str]:
         return {p.symbol for p in self.active()}
+
+    def ledger(self) -> Ledger:
+        """Buys and exits so far, for the trade cap and cooldowns."""
+        return Ledger([[p.t, p.symbol] for p in self.positions_ if p.status != "cancelled"],
+                      [[p.exit_t, p.symbol, p.net_pct, p.sell_reason] for p in self.positions_ if p.status == "closed"])
 
     # --- reading Wallex ---
     def balances(self) -> dict[str, tuple[Decimal, Decimal]]:

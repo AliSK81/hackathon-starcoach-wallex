@@ -7,8 +7,14 @@
 - `--shadow` trades a fake book. `--live` places real orders on Wallex.
 - `--end-at` is when trading ends (UTC). New buys stop 3 hours before it, and
   everything is sold into Toman 30 minutes before it.
+- Halt: after HALT_AFTER failed cycles or guard rounds in a row, no new buys until
+  a clean cycle. Kill file: if data/KILL exists, the guard sells everything and
+  the run stops.
+- Every AI call and answer is saved in data/brain/llm_cache.sqlite. With
+  WX_LLM_REPLAY=1, saved answers are used again, so a past cycle re-runs exactly.
 """
 
+import os
 import threading
 import time
 from datetime import UTC, datetime
@@ -20,20 +26,25 @@ from wx.config import Settings
 from wx.cycle import collect_features
 from wx.decide import code_version, log_decision
 from wx.features import HOUR, add_context, closed_bars
-from wx.risk import Limits
-from wx.wallex_mcp import WallexMCP, microstructure
+from wx.llm_cache import SQLiteLLMCache
+from wx.risk import AGENT_LIMITS
+from wx.wallex_mcp import WallexMCP, candle_bars, microstructure
 
 GUARD_EVERY = 60
+HALT_AFTER = 3
 
 
-def chat_model(settings: Settings):
+def chat_model(settings: Settings, data_dir: Path | None = None):
     from langchain_openai import ChatOpenAI
+    cache = None
+    if data_dir is not None:
+        cache = SQLiteLLMCache(data_dir / "brain" / "llm_cache.sqlite", replay=os.environ.get("WX_LLM_REPLAY") == "1")
     return ChatOpenAI(model=settings.get("LLM_MODEL"), base_url=settings.get("LLM_BASE_URL"),
-                      api_key=settings.get("LLM_API_KEY"), temperature=0, timeout=180, max_retries=2)
+                      api_key=settings.get("LLM_API_KEY"), temperature=0, timeout=180, max_retries=2, cache=cache)
 
 
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
-               store, officer: bool = True) -> Brain:
+               store, officer: bool = True, limits=AGENT_LIMITS) -> Brain:
     mcp = WallexMCP()
 
     def features():
@@ -45,11 +56,20 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
         return [b[4] for b in bars[-hours:]]
 
     def log(record: dict) -> None:
-        log_decision(data_dir, {"version": code_version(), **record})
+        log_decision(data_dir, {"version": code_version(), **record}, chain=True)
 
-    return Brain(llm=chat_model(settings), executor=executor, features=features,
+    def candles(symbol: str, minutes: int, bars: int) -> list:
+        now = int(time.time())
+        try:
+            raw = mcp.call("wallex_basic_candle_history", {"symbol": symbol, "resolution": "1",
+                                                            "from": now - (bars + 1) * minutes * 60, "to": now})
+        except Exception as error:  # the agent sees the error and can use get_hourly_closes instead
+            return [{"error": f"{type(error).__name__}: {error}"[:200]}]
+        return candle_bars(raw, minutes, bars)
+
+    return Brain(llm=chat_model(settings, data_dir), executor=executor, features=features,
                  micro=lambda s: microstructure(s, mcp), closes=closes, store=store, log=log, end_at=end_at,
-                 limits=Limits(), officer=officer)
+                 limits=limits, officer=officer, candles=candles)
 
 
 def report(state: dict) -> str:
@@ -82,33 +102,48 @@ def report(state: dict) -> str:
     return "\n".join(lines)
 
 
-def guard_loop(executor, stop: threading.Event) -> None:
+def guard_loop(brain: Brain, data_dir: Path, stop: threading.Event) -> None:
+    executor, failures = brain.executor, 0
     while not stop.wait(GUARD_EVERY - time.time() % GUARD_EVERY):
         try:
             with executor.lock:
+                if (data_dir / "KILL").exists():  # the kill file: sell everything and stop
+                    now = int(time.time())
+                    done = executor.kill(now) if hasattr(executor, "kill") else executor.flatten({}, now)
+                    print(f"[guard] KILL file found, sold everything: {done}", flush=True)
+                    stop.set()
+                    return
                 for c in executor.guard(int(time.time())):
                     print(f"[guard] closed {c['symbol']} {c.get('net_pct')}% ({c.get('reason')})", flush=True)
+            failures = 0
         except Exception as error:  # the guard must never die
+            failures += 1
             print(f"[guard] failed: {type(error).__name__}: {error}", flush=True)
+        brain.halted = brain.halted if failures < HALT_AFTER else True
 
 
 def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | None, saver) -> int:
     graph = build_graph(brain, saver)
     config = {"configurable": {"thread_id": thread}}
     stop = threading.Event()
-    threading.Thread(target=guard_loop, args=(brain.executor, stop), daemon=True).start()
-    cycle = 0
+    threading.Thread(target=guard_loop, args=(brain, data_dir, stop), daemon=True).start()
+    cycle, failures = 0, 0
     try:
-        while cycles is None or cycle < cycles:
+        while (cycles is None or cycle < cycles) and not stop.is_set():
             cycle += 1
             print(f"--- cycle {cycle} at {datetime.now(UTC):%Y-%m-%d %H:%M:%S} UTC", flush=True)
             try:
                 state = graph.invoke({}, config)
                 print(report(state), flush=True)
+                failures, brain.halted = 0, False
             except Exception as error:  # log it and go on at the next beat
+                failures += 1
+                brain.halted = failures >= HALT_AFTER
                 log_decision(data_dir, {"cycle": cycle, "version": code_version(), "role": "brain",
-                                        "error": f"{type(error).__name__}: {error}"})
-                print(f"cycle {cycle} failed: {type(error).__name__}: {error}", flush=True)
+                                        "error": f"{type(error).__name__}: {error}", "halted": brain.halted},
+                             chain=True)
+                print(f"cycle {cycle} failed: {type(error).__name__}: {error}"
+                      + (" HALTED: no new buys until a clean cycle." if brain.halted else ""), flush=True)
             if brain.end_at is not None and time.time() > brain.end_at:
                 print("Trading has ended.")
                 break

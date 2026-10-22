@@ -13,7 +13,7 @@ from statistics import mean
 
 from wx.features import add_context
 from wx.replay import Lookup
-from wx.risk import Account, Limits, check_buy, update_peak
+from wx.risk import AGENT_LIMITS, Account, Ledger, Limits, check_buy, update_peak
 from wx.setups import SETUPS, SHORT_SETUPS
 from wx.study import lookup_from
 from wx.trades import MAKER_FEE_PCT, TAKER_FEE_PCT, History, Trade, trade
@@ -71,12 +71,13 @@ def run(rows: list[dict], histories: dict[str, History], policy: Policy, limits:
     for row in rows:
         hours[row["t"]][row["symbol"]] = row["features"]
     cash, peak, halted_since, day, day_start = float(START_TMN), float(START_TMN), None, None, float(START_TMN)
-    open_, closed, curve, rejected = [], [], [], defaultdict(int)
+    open_, closed, curve, rejected, ledger = [], [], [], defaultdict(int), Ledger()
     for t in sorted(hours):
         for p in [p for p in open_ if p.trade.exit_t <= t]:
             cash += p.tmn * (1 + p.trade.net_pct / 100)
             open_.remove(p)
             closed.append(p)
+            ledger.exits.append([p.trade.exit_t, p.symbol, p.trade.net_pct, p.trade.exit_reason])
         equity = cash + sum(p.tmn * (histories[p.symbol].close_at(t) / p.trade.entry if p.trade.entry_t <= t else 1)
                             for p in open_)
         peak, halted_since = update_peak(peak, equity, halted_since, t, limits)
@@ -87,15 +88,17 @@ def run(rows: list[dict], histories: dict[str, History], policy: Policy, limits:
             f = table[symbol]
             scale = limits.grade_b_scale if graded and SETUPS[setup].grade == "B" else 1.0
             verdict = check_buy(f, Account(equity, cash, sum(p.tmn for p in open_), peak, day_start), limits=limits,
-                                scale=scale)
+                                scale=scale, ledger=ledger, now=t, symbol=symbol)
             if not verdict.tmn:
                 rejected[verdict.rule] += 1
                 continue
-            done = trade(histories[symbol], setup, t, f, verdict.stop_pct, orders, lambda h, s=symbol: lookup(s, h))
+            done = trade(histories[symbol], setup, t, f, verdict.stop_pct, orders, lambda h, s=symbol: lookup(s, h),
+                         take_profit_pct=limits.take_profit_pct)
             if done is None:
                 rejected["limit buy never filled"] += 1
                 continue
             open_.append(Position(symbol, setup, verdict.tmn, done))
+            ledger.entries.append([t, symbol])
             cash -= verdict.tmn
         curve.append((t, equity))
     for p in open_:  # trade() closed these at the end of the data
@@ -192,11 +195,14 @@ def short_scenarios(rows: list[dict], histories: dict[str, History], spreads: di
     periods = {"all": rows, "1st half": [r for r in rows if r["t"] < middle],
                "2nd half": [r for r in rows if r["t"] >= middle]}
     lines = [f"--- {hours}-hour windows, limit orders, sold into Toman at the end of each window"]
-    for name, setups, graded in (("agent setups (graded)", SHORT_SETUPS, True),
-                                 ("dip setups only", ("capitulation", "stretched_dip", "dip_toman_weak"), True),
-                                 ("trend (old rule)", ("trend",), False)):
+    for name, setups, graded, limits in (
+            ("agent setups, agent limits", SHORT_SETUPS, True, AGENT_LIMITS),
+            ("agent setups, old limits", SHORT_SETUPS, True, Limits()),
+            ("dip setups only, agent limits", ("capitulation", "stretched_dip", "dip_toman_weak"), True, AGENT_LIMITS),
+            ("trend (old rule)", ("trend",), False, Limits())):
         for period, part in periods.items():
-            line, _ = short_windows(part, histories, setups, spreads, hours, graded=graded, lookup=lookup)
+            line, _ = short_windows(part, histories, setups, spreads, hours, graded=graded, limits=limits,
+                                    lookup=lookup)
             lines.append(f"{name}, {period}: {line}")
     return "\n".join(lines)
 

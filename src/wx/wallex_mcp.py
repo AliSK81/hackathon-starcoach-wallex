@@ -22,6 +22,7 @@ from wx.wallex import WallexError, get_json
 MCP_URL = "https://api.wallex.ir/mcp"
 READ_TOOLS = ("wallex_basic_get_market_depth", "wallex_basic_get_latest_trades", "wallex_basic_candle_history")
 NEAR_PCT = 1.0  # depth is summed within this % of the mid price
+IMPACT_TMN = (500_000, 1_250_000)  # order sizes for the slippage estimate: a small order and the 25% cap
 
 
 class WallexMCP:
@@ -64,12 +65,47 @@ def book_summary(book: dict) -> dict:
     mid = (bids[0][0] + asks[0][0]) / 2
     bid_tmn = sum(p * q for p, q in bids if p >= mid * (1 - NEAR_PCT / 100))
     ask_tmn = sum(p * q for p, q in asks if p <= mid * (1 + NEAR_PCT / 100))
+    impact = {}
+    for tmn in IMPACT_TMN:
+        impact[f"buy_{tmn // 1000}k_cost_pct"] = walk(asks, tmn, mid)
+        impact[f"sell_{tmn // 1000}k_cost_pct"] = walk(bids, tmn, mid)
     return {
+        **impact,
         "best_bid": bids[0][0], "best_ask": asks[0][0],
         "spread_pct": round((asks[0][0] - bids[0][0]) / mid * 100, 3),
         "bid_tmn_within_1pct": round(bid_tmn), "ask_tmn_within_1pct": round(ask_tmn),
         "imbalance_1pct": round((bid_tmn - ask_tmn) / (bid_tmn + ask_tmn), 2) if bid_tmn + ask_tmn else 0.0,
     }
+
+
+def walk(levels: list[tuple[float, float]], tmn: float, mid: float) -> float | None:
+    """How far from the mid an order of `tmn` Toman fills on average, walking these levels, %. None if too thin."""
+    left, qty = tmn, 0.0
+    for price, size in levels:
+        take = min(size, left / price)
+        qty, left = qty + take, left - take * price
+        if left <= 1e-9:
+            return round(abs(tmn / qty / mid - 1) * 100, 3)
+    return None
+
+
+def candle_bars(raw: dict, minutes: int, bars: int) -> list[dict]:
+    """1-minute candles from Wallex ({t, o, h, l, c, v} lists) as the last `bars` bars of `minutes` each.
+    Prices are % from the first bar's open."""
+    rows = list(zip(raw.get("t") or [], *(raw.get(k) or [] for k in "ohlcv")))
+    if not rows:
+        return []
+    groups: dict[int, list] = {}
+    for t, o, h, l, c, v in rows:
+        groups.setdefault(int(t) // (minutes * 60), []).append((float(o), float(h), float(l), float(c), float(v)))
+    keys = sorted(groups)[-bars:]
+    first = groups[keys[0]][0][0]
+
+    def p(x: float) -> float:
+        return round((x / first - 1) * 100, 2)
+    return [{"t": time.strftime("%H:%M", time.gmtime(k * minutes * 60)), "o": p(g[0][0]), "h": p(max(x[1] for x in g)),
+             "l": p(min(x[2] for x in g)), "c": p(g[-1][3]), "v": round(sum(x[4] for x in g), 6)}
+            for k in keys for g in [groups[k]]]
 
 
 def flow_summary(trades: list[dict], now: float | None = None) -> dict:

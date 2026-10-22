@@ -1,11 +1,14 @@
 Rebuilding the features at every past hour ...
 --- 12-hour windows, limit orders, sold into Toman at the end of each window
-agent setups (graded), all: 355 windows of 12 h: up in 23%, flat (no trade) in 35%, average -0.07%, median +0.00%, worst -2.69%, best +2.55%, 1.8 trades a window
-agent setups (graded), 1st half: 177 windows of 12 h: up in 29%, flat (no trade) in 31%, average -0.03%, median +0.00%, worst -2.69%, best +2.55%, 1.9 trades a window
-agent setups (graded), 2nd half: 177 windows of 12 h: up in 19%, flat (no trade) in 41%, average -0.11%, median +0.00%, worst -2.13%, best +1.59%, 1.6 trades a window
-dip setups only, all: 355 windows of 12 h: up in 10%, flat (no trade) in 71%, average -0.03%, median +0.00%, worst -2.13%, best +1.90%, 0.5 trades a window
-dip setups only, 1st half: 177 windows of 12 h: up in 11%, flat (no trade) in 71%, average -0.02%, median +0.00%, worst -1.07%, best +0.64%, 0.5 trades a window
-dip setups only, 2nd half: 177 windows of 12 h: up in 12%, flat (no trade) in 72%, average -0.03%, median +0.00%, worst -2.13%, best +1.59%, 0.6 trades a window
+agent setups, agent limits, all: 355 windows of 12 h: up in 14%, flat (no trade) in 61%, average -0.04%, median +0.00%, worst -1.43%, best +2.15%, 0.7 trades a window
+agent setups, agent limits, 1st half: 177 windows of 12 h: up in 15%, flat (no trade) in 68%, average -0.00%, median +0.00%, worst -0.73%, best +0.56%, 0.4 trades a window
+agent setups, agent limits, 2nd half: 177 windows of 12 h: up in 14%, flat (no trade) in 54%, average -0.05%, median +0.00%, worst -1.51%, best +1.84%, 1.0 trades a window
+agent setups, old limits, all: 355 windows of 12 h: up in 23%, flat (no trade) in 35%, average -0.07%, median +0.00%, worst -2.69%, best +2.55%, 1.8 trades a window
+agent setups, old limits, 1st half: 177 windows of 12 h: up in 29%, flat (no trade) in 31%, average -0.03%, median +0.00%, worst -2.69%, best +2.55%, 1.9 trades a window
+agent setups, old limits, 2nd half: 177 windows of 12 h: up in 19%, flat (no trade) in 41%, average -0.11%, median +0.00%, worst -2.13%, best +1.59%, 1.6 trades a window
+dip setups only, agent limits, all: 355 windows of 12 h: up in 8%, flat (no trade) in 83%, average -0.01%, median +0.00%, worst -1.43%, best +2.15%, 0.3 trades a window
+dip setups only, agent limits, 1st half: 177 windows of 12 h: up in 8%, flat (no trade) in 86%, average +0.01%, median +0.00%, worst -0.73%, best +0.57%, 0.2 trades a window
+dip setups only, agent limits, 2nd half: 177 windows of 12 h: up in 10%, flat (no trade) in 80%, average +0.01%, median +0.00%, worst -1.51%, best +1.84%, 0.4 trades a window
 trend (old rule), all: 355 windows of 12 h: up in 32%, flat (no trade) in 12%, average -0.14%, median -0.07%, worst -3.31%, best +6.09%, 2.7 trades a window
 trend (old rule), 1st half: 177 windows of 12 h: up in 32%, flat (no trade) in 11%, average -0.10%, median -0.07%, worst -3.31%, best +6.09%, 2.9 trades a window
 trend (old rule), 2nd half: 177 windows of 12 h: up in 29%, flat (no trade) in 12%, average -0.19%, median -0.16%, worst -2.36%, best +2.67%, 2.7 trades a window

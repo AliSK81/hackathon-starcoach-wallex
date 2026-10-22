@@ -32,10 +32,11 @@ Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRA
 | Command | What it does |
 |---|---|
 | `uv run wx live` | The live book: positions, results, reasons. |
-| `uv run wx kill` | Kill switch: cancel every open order and sell every position. |
+| `uv run wx kill` | Kill switch: cancel every open order and sell every position. A file `data/KILL` does the same inside a running agent. |
+| `uv run wx verify-log` | Check the hash chain of the agent's decision log. |
 | `uv run wx shadow` | The older shadow book (`wx run --shadow`). |
 
-Memory lives in `data/brain/` (SQLite). The live book is `data/live/book.json`, and every order event is in `data/live/orders.jsonl`.
+Memory lives in `data/brain/` (SQLite), with every AI call and answer (`llm_cache.sqlite`; `WX_LLM_REPLAY=1` uses saved answers again). The live book is `data/live/book.json`, and every order event is in `data/live/orders.jsonl`.
 
 ## Trade (older loop, shadow)
 
@@ -80,7 +81,7 @@ Saved outputs are in [results/](results/README.md). Markets can be named after a
 ## Tests
 
 ```bash
-uv run pytest                 # about 140 tests, no internet
+uv run pytest                 # about 150 tests, no internet
 uvx ruff check src tests      # lint
 ```
 

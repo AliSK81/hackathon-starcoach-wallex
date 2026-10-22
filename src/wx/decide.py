@@ -11,6 +11,7 @@ Log: data/decisions/<UTC date>.jsonl, one JSON line per decision, including
 "do nothing". No orders are placed here.
 """
 
+import hashlib
 import json
 import subprocess
 from collections.abc import Callable
@@ -290,8 +291,49 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
     return {**record, "market_view": view, "problems": problems, "decisions": decisions}
 
 
-def log_decision(data_dir: Path, record: dict, now: datetime | None = None) -> Path:
+def log_decision(data_dir: Path, record: dict, now: datetime | None = None, chain: bool = False) -> Path:
+    """Append one record. With chain, it carries the hash of the previous chained record and its own (D40),
+    so an edited or deleted line can be found (`wx verify-log`)."""
     now = now or datetime.now(UTC)
     path = data_dir / "decisions" / f"{now:%Y-%m-%d}.jsonl"
-    append_log(path, {"time": now.isoformat(timespec="seconds"), **record})
+    record = {"time": now.isoformat(timespec="seconds"), **record}
+    if chain:
+        record["prev_hash"] = last_hash(path)
+        record["hash"] = record_hash(record)
+    append_log(path, record)
     return path
+
+
+def record_hash(record: dict) -> str:
+    body = {k: v for k, v in record.items() if k != "hash"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def last_hash(path: Path) -> str:
+    """The hash of the newest chained record in the file, or "" if there is none."""
+    if not path.is_file():
+        return ""
+    for line in reversed(path.read_text(encoding="utf-8").splitlines()):
+        try:
+            h = json.loads(line).get("hash")
+        except json.JSONDecodeError:
+            continue
+        if h:
+            return h
+    return ""
+
+
+def verify_chain(path: Path) -> tuple[int, list[str]]:
+    """(chained records checked, problems). A problem is a changed record or a broken link."""
+    checked, problems, prev = 0, [], ""
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        record = json.loads(line)
+        if "hash" not in record:
+            continue
+        checked += 1
+        if record_hash(record) != record["hash"]:
+            problems.append(f"line {n}: the record was changed")
+        if record.get("prev_hash") != prev:
+            problems.append(f"line {n}: the link to the previous record is broken")
+        prev = record["hash"]
+    return checked, problems

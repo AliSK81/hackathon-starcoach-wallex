@@ -1,19 +1,24 @@
 """The trading agent: one LangGraph graph per decision cycle.
 
-    sense ──> analyst ──> risk_officer ──> gate ──> act ──> reflect ──> journal
-      │  (LLM agent,     (LLM critic,     (code)   (code)  (LLM, only
-      │   tools, skills,  can only                          when trades
-      │   memory)         shrink)                           closed)
-      └── nothing to decide ─────────────────────────────> act
+          ┌─> bull ─┐
+    sense ┤         ├─> analyst ──> risk_officer ──> gate ──> act ──> reflect ──> journal
+      │   └─> bear ─┘  (LLM agent,   (LLM judge,      (code)   (code)  (LLM, only
+      │   (LLM, in      tools,        can only                          when trades
+      │    parallel)    skills,       shrink)                           closed)
+      │                 memory)
+      └── nothing to decide ─────────────────────────────────────> act
 
 - sense (code): live features for every market, whole-market context, the book
   and trade flow of each candidate (Wallex MCP), our account and positions.
   Candidates are markets where a 12-hour setup (setups.SHORT_SETUPS) is active.
+- bull, bear (LLM, in parallel): each argues one side for every candidate, citing
+  feature names only. Skipped in safe mode or over the daily token budget.
 - analyst (LLM): a ReAct agent with read-only tools. It reads trader skills
-  (skills/*.md) and its lessons from past trades, studies each candidate and
-  each position, and answers in JSON.
-- risk_officer (LLM): a second AI challenges each TAKE. It can only make an
-  order smaller, never bigger.
+  (skills/*.md), weighs the bull and bear cases, and gets its lessons from past
+  trades (losses first) and its own thesis for each position. It studies each
+  candidate and each position, and answers in JSON.
+- risk_officer (LLM): judges the debate and challenges each TAKE. It can only
+  make an order smaller, never bigger.
 - gate (code): checks every claim against the data (checked vetoes, checked exit
   reasons), and sizes every buy with the risk check. The AI never sizes an order.
 - act (code): sends approved orders to the executor (shadow book or Wallex).
@@ -25,6 +30,8 @@ checkpointer), so the agent sees what it thought in its last cycles. Long term:
 lessons and closed trades live in a SQLite store, and the agent can recall them.
 
 AI suggests, code decides (ROADMAP rule 7). If the AI fails, nothing is bought.
+After SAFE_AFTER failed analyst cycles in a row, the bot is in safe mode: no
+debate and no officer (fewer calls) until the analyst answers again.
 """
 
 import json
@@ -32,7 +39,7 @@ import operator
 import sqlite3
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
@@ -46,7 +53,7 @@ from langgraph.store.sqlite import SqliteStore
 
 from wx.features import FEATURES
 from wx.llm import LLMError, parse_json
-from wx.risk import Limits, check_buy
+from wx.risk import AGENT_LIMITS, Account, Limits, check_buy, edge_problem
 from wx.setups import SETUPS, SHORT_SETUPS
 from wx.veto import VETOES
 
@@ -56,6 +63,9 @@ MAX_TOOL_ROUNDS = 10
 TAKE_PROFIT_NET_PCT = 1.0  # exit reason take_profit: the gain after a round trip is at least this
 ROUND_TRIP_PCT = 0.55  # maker in, taker out, a little spread
 OFFICER_CUT = 0.5  # a REDUCE from the risk officer halves the risk
+SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
+TOKEN_BUDGET = 3_000_000  # AI tokens a UTC day. Above it, no debate and no officer
+AUTO_LESSONS = 6  # lessons put in the analyst's facts, losses first
 
 # 12-hour record of each setup on 18 markets over 120 days: fixed 12-hour hold, 4 ATR stop, net of costs (F41).
 # `scripts/study_12h.py` makes these numbers again.
@@ -96,6 +106,12 @@ class State(TypedDict, total=False):
     orders: list
     ai: dict
     problems: list
+    bull: dict
+    bear: dict
+    theses: dict
+    fail_streak: int  # failed analyst cycles in a row (kept between cycles)
+    token_day: int  # the UTC day of tokens_today
+    tokens_today: int
     recent: Annotated[list, operator.add]  # short-term memory: one line per cycle, kept by the checkpointer
 
 
@@ -110,9 +126,16 @@ class Brain:
     store: Any  # a LangGraph store, for long-term memory
     log: Callable[[dict], None]  # writes one cycle record
     end_at: int | None = None  # Unix time trading ends, if known
-    limits: Limits = field(default_factory=Limits)
+    limits: Limits = AGENT_LIMITS
     officer: bool = True  # run the risk officer
+    debate: bool = True  # run the bull and bear analysts
+    candles: Callable[[str, int, int], list] | None = None  # (symbol, minutes per bar, bars) -> bars, via MCP
+    halted: bool = False  # set by the runner after repeated failures: no new buys
     clock: Callable[[], float] = time.time
+
+
+class _Empty:
+    value: dict = {}
 
 
 def skills_index() -> dict[str, str]:
@@ -170,12 +193,20 @@ FORMAT = """{
 One entry in "candidates" for every candidate, and one in "positions" for every position we hold."""
 
 OFFICER = """You are the risk officer of a trading bot. The analyst wants to buy the candidates below.
-Challenge each one like a sceptical senior trader: what could go wrong in the next 12 hours, given the
+You also judge the debate: a bull analyst and a bear analyst each argued one side.
+Challenge each buy like a sceptical senior trader: what could go wrong in the next 12 hours, given the
 data? You can only answer AGREE or REDUCE (halve the risk). You can't stop a buy and you can't enlarge it.
-REDUCE only for a concrete reason in the data (name it). Most good setups deserve AGREE.
+REDUCE only when the bear case names a concrete risk in the data that the bull case does not answer.
+Most good setups deserve AGREE.
 
 Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "AGREE" | "REDUCE", "reason": "..."}],
 "note": "<one sentence>"}"""
+
+DEBATER = """You are the {side} analyst of a trading bot on Wallex (spot, long only, Toman markets).
+For each candidate below, make the strongest honest {side} case for buying it now and holding up to 12 hours.
+Use only the numbers given. Cite feature names. Don't invent numbers. Be short.
+Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most 250 characters>",
+"evidence": ["<feature names>"], "strength": <0 to 1>}}]}}"""
 
 REFLECT = """You review closed trades of a trading bot, to write lessons for its future self.
 Read the skill below, then reply with one JSON object:
@@ -201,23 +232,56 @@ def build_graph(b: Brain, checkpointer=None):
             for s, f in table.items() if s not in held
             for name in [next((n for n in f.get("setups", []) if n in SHORT_SETUPS), None)] if name
         ]
+        too_small = [c for c in candidates if edge_problem(table[c["symbol"]], b.limits)]
+        problems += [f"{c['symbol']} {c['setup']} not a candidate: {edge_problem(table[c['symbol']], b.limits)}"
+                     for c in too_small]
+        candidates = [c for c in candidates if c not in too_small]  # the risk check would refuse them anyway
         micro = {}
         for c in candidates:  # the gate needs the live book to check a sell_pressure veto
             micro[c["symbol"]] = m = b.micro(c["symbol"])
             table[c["symbol"]].update({"buy_share": (m.get("flow") or {}).get("buy_share"),
                                        "imbalance_1pct": (m.get("book") or {}).get("imbalance_1pct")})
         hours_left = None if b.end_at is None else round((b.end_at - now) / 3600, 2)
+        day = now // 86400
+        tokens = state.get("tokens_today", 0) if state.get("token_day") == day else 0
+        theses = {s: (b.store.get(("theses",), s) or _Empty).value for s in positions}
         return {"cycle": state.get("cycle", 0) + 1, "now": now, "hours_left": hours_left, "table": table,
+                "token_day": day, "tokens_today": tokens, "bull": {}, "bear": {},
+                "theses": {s: t for s, t in theses.items() if t},
                 "micro": micro, "candidates": candidates, "positions": positions, "closed": [],
                 "account": {"equity": round(account.equity), "cash": round(account.cash),
                             "in_coins": round(account.exposure), "peak": round(account.peak)},
                 "lessons": [], "plan": {}, "review": {}, "decisions": [], "orders": [], "ai": {},
                 "problems": problems}
 
-    def route(state: State) -> str:
+    def lean(state: State) -> bool:
+        """Safe mode or over the token budget: skip the debate and the officer."""
+        return state.get("fail_streak", 0) >= SAFE_AFTER or state.get("tokens_today", 0) >= TOKEN_BUDGET
+
+    def route(state: State):
         if not state["table"]:
             return "journal"
-        return "analyst" if state["candidates"] or state["positions"] else "act"
+        if not state["candidates"] and not state["positions"]:
+            return "act"
+        if state["candidates"] and b.debate and not lean(state):
+            return ["bull", "bear"]
+        return "analyst"
+
+    def debater(side: str):
+        def node(state: State) -> State:
+            facts = {"candidates": state["candidates"], "hours_left": state["hours_left"],
+                     "markets": {c["symbol"]: state["table"][c["symbol"]] for c in state["candidates"]},
+                     "books": state["micro"], "btc": state["table"].get("BTCTMN"),
+                     "feature_meanings": FEATURES}
+            try:
+                reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
+                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(json.dumps(facts, default=str))])
+                out = parse_json(text_of(reply))
+                out["tokens"] = (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
+            except Exception as e:  # the analyst decides without this side's case
+                out = {"error": f"{type(e).__name__}: {e}"[:300]}
+            return {side: out}
+        return node
 
     def analyst(state: State) -> State:
         table = state["table"]
@@ -229,6 +293,9 @@ def build_graph(b: Brain, checkpointer=None):
             "markets": {s: {k: f.get(k) for k in OVERVIEW} for s, f in table.items()},
             "vetoes": {k: v[0] for k, v in VETOES.items()}, "exit_reasons": EXITS,
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
+            "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
+            "your_thesis_per_position": state.get("theses", {}),
+            "bull_case": state.get("bull") or None, "bear_case": state.get("bear") or None,
             "feature_meanings": FEATURES,
         }
         # A LangChain agent (a LangGraph subgraph): the model calls tools until it answers. Middleware caps the
@@ -249,16 +316,19 @@ def build_graph(b: Brain, checkpointer=None):
             messages, plan, error = [], {}, f"{type(e).__name__}: {e}"[:500]
         ai = {"seconds": round(time.monotonic() - started, 1), "steps": tool_steps(messages),
               "tokens": token_count(messages), "error": error, "model": getattr(b.llm, "model_name", "")}
-        return {"plan": plan, "ai": ai}
+        spent = ai["tokens"] + sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
+        return {"plan": plan, "ai": ai, "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
+                "tokens_today": state.get("tokens_today", 0) + spent}
 
     def risk_officer(state: State) -> State:
         takes = [c for c in state["plan"].get("candidates", []) if c.get("decision") == "TAKE"]
-        if not b.officer or not takes:
+        if not b.officer or not takes or lean(state):
             return {"review": {}}
         facts = {"hours_left": state["hours_left"], "takes": takes,
                  "markets": {c["symbol"]: state["table"].get(c["symbol"]) for c in takes if c.get("symbol") in
                              state["table"]},
                  "books": {s: state["micro"].get(s) for s in (c.get("symbol") for c in takes)},
+                 "bull_case": state.get("bull"), "bear_case": state.get("bear"),
                  "rules": read_skill_text("risk-and-sizing")}
         try:
             reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
@@ -286,11 +356,18 @@ def build_graph(b: Brain, checkpointer=None):
                 if d["action"] != "BUY":
                     continue
                 f = table[d["symbol"]]
-                v = check_buy(f, account, 0.0, b.limits, d["scale"], state["hours_left"])
+                if b.halted:
+                    d["verdict"] = {"tmn": 0, "rule": "halted", "reason": "rejected: halted after repeated failures"}
+                    continue
+                v = check_buy(f, account, 0.0, b.limits, d["scale"], state["hours_left"], b.executor.ledger(), now,
+                              d["symbol"])
                 d["verdict"] = {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
                 if v.tmn:
                     result = b.executor.buy(d["symbol"], d["setup"], f, v, now)
                     orders.append({"symbol": d["symbol"], "action": "BUY", "tmn": v.tmn, **result})
+                    if result.get("placed"):  # the analyst sees its own thesis while it holds the position
+                        b.store.put(("theses",), d["symbol"], {"setup": d["setup"], "reason": d["reason"],
+                                                               "invalidation": d["invalidation"], "t": now})
                     account = b.executor.account(table, now)
             closed = b.executor.drain_closed()  # from this cycle's sync and sells, and the guard since the last cycle
         return {"orders": orders, "closed": closed, "decisions": state.get("decisions", [])}
@@ -311,17 +388,23 @@ def build_graph(b: Brain, checkpointer=None):
         for trade in closed:
             key = f"{trade['symbol']}_{trade.get('entry_t') or trade.get('placed_t')}"
             b.store.put(("trades",), key, trade)
+        nets = {t["symbol"]: t.get("net_pct") for t in closed}
         for i, lesson in enumerate(lessons):
             if isinstance(lesson, dict) and lesson.get("lesson"):
+                symbol = str(lesson.get("symbol", ""))
+                net = nets.get(symbol)
                 b.store.put(("lessons",), f"{state['now']}_{i}", {
-                    "symbol": str(lesson.get("symbol", "")), "setup": str(lesson.get("setup", "")),
-                    "lesson": str(lesson["lesson"])[:400], "t": state["now"]})
+                    "symbol": symbol, "setup": str(lesson.get("setup", "")), "net_pct": net,
+                    "loss": net is not None and net < 0, "lesson": str(lesson["lesson"])[:400], "t": state["now"]})
+        for trade in closed:
+            b.store.delete(("theses",), trade["symbol"])
         return {"lessons": lessons, "problems": state["problems"] + problems}
 
     def journal(state: State) -> State:
         record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "candidates",
                                              "micro", "plan", "review", "decisions", "orders", "closed",
-                                             "lessons", "ai", "problems")}
+                                             "lessons", "ai", "problems", "bull", "bear", "theses",
+                                             "fail_streak", "tokens_today")}
         record.update(decided_at=state.get("now"), role="brain", markets=state.get("table"),
                       executor=b.executor.kind)
         b.log(record)
@@ -329,11 +412,13 @@ def build_graph(b: Brain, checkpointer=None):
         return {"recent": [summary]}
 
     g = StateGraph(State)
-    for name, fn in [("sense", sense), ("analyst", analyst), ("risk_officer", risk_officer), ("gate", gate),
-                     ("act", act), ("reflect", reflect), ("journal", journal)]:
+    for name, fn in [("sense", sense), ("bull", debater("bull")), ("bear", debater("bear")), ("analyst", analyst),
+                     ("risk_officer", risk_officer), ("gate", gate), ("act", act), ("reflect", reflect),
+                     ("journal", journal)]:
         g.add_node(name, fn)
     g.add_edge(START, "sense")
-    g.add_conditional_edges("sense", route, ["analyst", "act", "journal"])
+    g.add_conditional_edges("sense", route, ["bull", "bear", "analyst", "act", "journal"])
+    g.add_edge(["bull", "bear"], "analyst")  # the analyst waits for both sides
     g.add_edge("analyst", "risk_officer")
     g.add_edge("risk_officer", "gate")
     g.add_edge("gate", "act")
@@ -385,13 +470,48 @@ def analyst_tools(b: Brain, state: State) -> list:
         """The full text of one trader skill (see the skills list in your instructions)."""
         return read_skill_text(name)
 
-    return [get_market, get_hourly_closes, get_orderbook, get_setup_record, recall_lessons, read_skill]
+    @tool
+    def get_candles(symbol: str, minutes: int = 15, bars: int = 16) -> list:
+        """Recent candles of one market from the Wallex MCP server: `minutes` per bar (5, 15 or 60), the last `bars`
+        bars (at most 24). Prices are % from the first open, so the shape is easy to read."""
+        if b.candles is None:
+            return [{"error": "no candle source"}]
+        return b.candles(symbol, minutes if minutes in (5, 15, 60) else 15, max(2, min(int(bars), 24)))
+
+    @tool
+    def get_portfolio() -> dict:
+        """Our account now: equity, cash, positions, drawdown from the peak, buys in the last 24 hours, losses in a
+        row, hours left, and the risk limits code applies."""
+        acc, ledger = state["account"], b.executor.ledger()
+        peak = acc.get("peak") or acc.get("equity") or 1
+        return {"account": acc, "positions": state["positions"], "hours_left": state["hours_left"],
+                "drawdown_pct": round((1 - (acc.get("equity") or 0) / peak) * 100, 2),
+                "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "losses_in_a_row": ledger.streak(),
+                "limits": {k: v for k, v in vars(b.limits).items()}}
+
+    @tool
+    def check_order(symbol: str, conviction: float = 0.5) -> dict:
+        """What the risk check would do with a buy of this candidate now: size in Toman, or why it refuses.
+        Nothing is ordered."""
+        c = next((c for c in state["candidates"] if c["symbol"] == symbol), None)
+        if c is None:
+            return {"error": f"{symbol} is not a candidate"}
+        scale = (1.0 if c["grade"] == "A" else b.limits.grade_b_scale) * (0.5 + 0.5 * min(max(conviction, 0), 1))
+        acc = state["account"]
+        account = Account(acc["equity"], acc["cash"], acc["in_coins"], acc["peak"], acc["equity"])
+        v = check_buy(table[symbol], account, 0.0, b.limits, scale, state["hours_left"], b.executor.ledger(), now,
+                      symbol)
+        return {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
+
+    return [get_market, get_hourly_closes, get_candles, get_orderbook, get_setup_record, get_portfolio, check_order,
+            recall_lessons, read_skill]
 
 
 def recall(store, filter_: dict | None, limit: int) -> list:
-    items = store.search(("lessons",), filter=filter_, limit=50) if store else []
-    items = sorted(items, key=lambda i: i.value.get("t", 0), reverse=True)[:limit]
-    return [{k: i.value.get(k) for k in ("symbol", "setup", "lesson")} for i in items]
+    """Lessons, from losing trades first, then the newest."""
+    items = store.search(("lessons",), filter=filter_, limit=100) if store else []
+    items = sorted(items, key=lambda i: (not i.value.get("loss"), -i.value.get("t", 0)))[:limit]
+    return [{k: i.value.get(k) for k in ("symbol", "setup", "net_pct", "lesson")} for i in items]
 
 
 def check_plan(state: State, limits: Limits) -> tuple[list[dict], list[str]]:
