@@ -1,8 +1,10 @@
 # hackathon-starcoach-wallex
 
-A bot that trades on Wallex by itself.
+A bot that trades on Wallex by itself. An AI agent reviews every trade. Normal code checks the AI, sizes every order, and sets every stop.
 
-## Run it
+Start with [docs/STRATEGY.md](docs/STRATEGY.md): how it trades, the AI's role, risk, and results.
+
+## Set up
 
 You need [uv](https://docs.astral.sh/uv/).
 
@@ -10,117 +12,63 @@ You need [uv](https://docs.astral.sh/uv/).
 uv run wx
 ```
 
-This installs the project and prints which keys are set. It runs without any key.
+This installs the project and prints which keys are set. Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
 
-```bash
-uv run wx markets
-```
+| Setting | Needed for |
+|---|---|
+| `WALLEX_API_KEY` | `wx account`, round-trip costs, real balances. Read-only is enough until real orders. |
+| `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | Anything that asks the AI: `wx ai`, `wx decide`, `wx run`, `wx replay`. Any OpenAI-compatible API. |
 
-This reads all Wallex markets, shows how many we may trade, and saves a copy in `data/`. It needs no key.
-
-```bash
-uv run wx candles
-```
-
-This saves 1-minute and 1-hour candles for six markets in `data/candles/`. It keeps the last 120 days (`--days` changes this). Later runs add only what is missing. It needs no key.
-
-```bash
-uv run wx watch
-```
-
-This reads live prices for the same six markets every minute and logs them in `data/prices/`. Network errors are logged, and it keeps going. Ctrl+C stops it. It needs no key.
-
-```bash
-uv run wx account
-```
-
-This reads our balances and fee rates and saves a copy in `data/account/`. It needs `WALLEX_API_KEY` in `.env`.
-
-```bash
-uv run wx rules
-```
-
-This shows the order rules for the six markets: decimals, minimum quantity, and minimum order value. It needs no key.
-
-```bash
-uv run wx ai
-```
-
-This asks the AI one small question, to check the AI settings. It needs `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` in `.env`.
-
-```bash
-uv run wx features
-```
-
-This updates the candles, reads the live order book, and prints the indicators the AI will use, for the same six markets. With `WALLEX_API_KEY` it also shows the round-trip cost.
-
-```bash
-uv run wx decide
-```
-
-This computes the features, then asks the AI for BUY, SELL or HOLD on each of the six markets, with a reason. Code checks the answer and logs it in `data/decisions/`. It places no orders. It needs the AI settings. With `WALLEX_API_KEY` the AI also sees our cash and holdings.
-
-```bash
-uv run wx run
-```
-
-This makes a decision like `wx decide` every 15 minutes, on the beat (at :00, :15, :30 and :45). Every cycle is logged in `data/decisions/`, even one that fails. Errors never stop it. Ctrl+C stops it. It places no real orders. `--interval` and `--cycles` change the beat and the number of cycles.
-
-`--role` sets what the AI does: `agent` (the default), `veto`, `informed` or `pick` (see DECISIONS D24 to D31). `--shadow` trades a fake book of 5,000,000 TMN: the risk check sizes each BUY, and fake limit orders fill, stop and close on the live candles, with the same rules as `wx backtest`. The book is `data/shadow/book.json`, and every order event goes to `data/shadow/orders.jsonl`. A restart loses nothing.
+## Trade (shadow)
 
 ```bash
 uv run wx run --shadow
 ```
 
-```bash
-uv run wx shadow
-```
+Every 15 minutes (at :00, :15, :30, :45): update the candles, compute the features, let the AI agent review every trend buy, run the risk check, and place fake limit orders. Fake orders fill, stop and close on the live candles, with the same rules as the backtest. Every cycle is logged in `data/decisions/`, even one that fails. The book is `data/shadow/book.json`, so a restart loses nothing. No real order is placed.
 
-This shows the shadow book: cash, orders waiting or open, and closed trades with their results.
+Options: `--role` (`agent` by default; `veto`, `informed`, `pick`, see DECISIONS D24 to D31), `--interval`, `--cycles`. Without `--shadow`, decisions are only logged.
 
 ```bash
-uv run wx tradelog > results/trade_log.md
+uv run wx shadow                          # the book: equity, open positions, closed trades
+uv run wx tradelog > results/trade_log.md # per-trade log: setup, AI reason, risk verdict, result
 ```
 
-This writes the per-trade decision log: for each shadow order, when it was placed, the setup, the risk check's verdict, the AI's confidence and reason, and how it ended.
+## Test on the past
 
-```bash
-uv run wx replay
-```
+| Command | What it does | Needs |
+|---|---|---|
+| `uv run wx candles` | Saves 120 days of 1-minute and 1-hour candles to `data/candles/`. Later runs add only what is missing. | nothing |
+| `uv run wx backtest` | Trades 5,000,000 TMN hour by hour over the saved history, with the risk check. Each policy, taker and limit orders, each half, and 3-day windows. | candles |
+| `uv run wx study` | Each buy setup on its own, with its exit rule and several stops. | candles |
+| `uv run wx replay` | Asks the AI about 40 past moments, and compares its buys with the same rules without the AI. `--role`, `--moments`, `--seed`. | candles, AI |
+| `uv run wx replay --from results/replay_trend_agent.jsonl` | The summary of a saved replay, without asking the AI. | nothing |
 
-This asks the AI about 40 past moments with an active buy setup, rebuilt from the saved candles. Then it compares the AI's buys with taking every setup and with doing nothing, over the next 24 hours, with a stop-loss and after costs. `--moments`, `--days` and `--seed` change which moments. `--any-time` picks any moments. It needs the AI settings.
+Saved outputs are in [results/](results/README.md). Markets can be named after any command, for example `uv run wx backtest PUMPTMN ARBTMN`.
 
-```bash
-uv run wx study
-```
+## Look at Wallex and the AI
 
-This shows how each buy setup did over the saved history, without the AI: held 24 hours, and with stop-losses of 2, 3 and 4 ATR. It takes about 30 seconds. It needs no AI.
-
-```bash
-uv run wx backtest
-```
-
-This trades 5,000,000 TMN hour by hour over the saved history, with rules only. Each policy buys some of the setups. The risk check sizes every buy. Each buy is held 24 hours or until its stop. It shows return, drawdown and trades for taker orders and for limit orders, over the whole history and each half. It needs no AI.
-
-## Keys
-
-Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
+| Command | What it does |
+|---|---|
+| `uv run wx markets` | All Wallex markets, how many we may trade, and a saved copy. |
+| `uv run wx rules` | Decimals, minimum quantity and minimum order value per market. |
+| `uv run wx account` | Our balances and fee rates (needs `WALLEX_API_KEY`). |
+| `uv run wx watch` | Live best bid and ask every minute, logged in `data/prices/`. |
+| `uv run wx features` | The 28 features the AI sees, for each market, now. |
+| `uv run wx ai` | One small question, to check the AI settings. |
+| `uv run wx decide` | One decision cycle, printed and logged. |
 
 ## Tests
 
 ```bash
-uv run pytest
-```
-
-Lint (unused imports, import order, simple bugs):
-
-```bash
-uvx ruff check src tests
+uv run pytest                 # about 120 tests, no internet
+uvx ruff check src tests      # lint
 ```
 
 ## Docs
 
 - [Strategy](docs/STRATEGY.md): how the bot trades, the AI's role, risk, results. Start here.
+- [Results](results/README.md): saved backtest, study and replay outputs.
 - [Roadmap](docs/ROADMAP.md): the phases.
-- [Progress](docs/PROGRESS.md): what we did.
-- [Decisions](docs/DECISIONS.md): what we decided, and facts we checked.
+- [Progress](docs/PROGRESS.md): what we did, change by change.
+- [Decisions](docs/DECISIONS.md): what we decided (D), and facts we checked (F).
