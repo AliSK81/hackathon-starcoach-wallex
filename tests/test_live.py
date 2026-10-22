@@ -144,3 +144,10 @@ def test_order_state_reads_wallex_fields():
                                 "executedSum": "200", "fills": [{"fee": "0.005", "feeAsset": "SOL"},
                                                                 {"fee": "1", "feeAsset": "TMN"}]})
     assert o.done and o.avg_price == 100 and o.fee_coin == Decimal("0.005") and o.fee_quote == 1
+
+
+def test_an_excluded_or_unknown_market_is_never_ordered(ex):
+    for symbol in ("APTTMN", "NOPETMN"):  # APT/TMN is on the exclusion list; NOPETMN has no rules
+        result = ex.buy(symbol, "trend", f(), Verdict(1_000_000, 4.0, "approved", "approved"), NOW)
+        assert not result["placed"] and "not an allowed market" in result["error"]
+    assert ex.trader.orders == {}

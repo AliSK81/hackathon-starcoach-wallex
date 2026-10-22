@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from wx.markets import load_inactive
 from wx.orders import OrderState, Trader, new_client_id
 from wx.prices import append_log
 from wx.risk import Account, Ledger, Limits, Verdict, update_peak
@@ -28,6 +29,7 @@ from wx.setups import SETUPS
 from wx.trades import FILL_WINDOW
 from wx.wallex import WallexError, fetch_balances, fetch_best_prices
 
+EXCLUDED = load_inactive()  # the organizers' list of markets we may not trade
 SELL_SLIP = Decimal("0.005")  # a sell is priced this far under the best bid, so it fills at once
 RESELL_AFTER = 60  # seconds before an unfilled sell is cancelled and sent again lower
 
@@ -147,6 +149,9 @@ class LiveExecutor:
 
     # --- orders ---
     def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int) -> dict:
+        if symbol not in self.rules or symbol in EXCLUDED:  # a hard rule of the contest: allowed markets only (D3)
+            self.event(now, "buy refused: not an allowed market", symbol=symbol)
+            return {"placed": False, "error": f"{symbol} is not an allowed market"}
         rules = self.rules[symbol]
         try:
             bid, _ = fetch_best_prices(symbol)
