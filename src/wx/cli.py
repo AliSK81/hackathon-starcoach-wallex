@@ -16,8 +16,10 @@ from wx.features import FEATURES, market_features
 from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
-from wx.replay import History, run_replay, sample_times, summary
+from wx.replay import History, pick_times, run_replay, sample_times, summary
 from wx.rules import MarketRules
+from wx.study import report as study_report
+from wx.study import scan
 from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
@@ -253,7 +255,7 @@ def run_decide(symbols: list[str], settings: Settings) -> int:
     if markets is None:
         return 1
     record = decision_cycle(markets, settings)
-    return 0 if record["driver"] == "ai" and not record["feature_errors"] else 1
+    return 0 if record["driver"] in ("ai", "rules") and not record["feature_errors"] else 1
 
 
 def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int | None) -> int:
@@ -286,16 +288,10 @@ def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int 
 TMN_TAKER_FEE = 0.003
 
 
-def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int) -> int:
-    if missing_ai_settings(settings):
-        return 1
-    markets = pick_markets(symbols)
-    if markets is None:
-        return 1
+def past_inputs(markets: dict[str, dict], settings: Settings):
+    """Saved history, today's spread and the taker fee for each market, for `wx replay` and `wx study`."""
     now = int(time.time())
     histories = {s: History.load(DATA_DIR, s, now) for s in markets}
-    newest = int(min(h.minutes[-1][0] for h in histories.values() if h.minutes))
-    times = sample_times(newest - days * 86400, newest - 86400, moments, seed)
     spreads = {}
     for s in markets:
         try:
@@ -305,9 +301,40 @@ def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: i
             spreads[s] = 0.3
             print(f"  {s}: could not read the book, so the spread is taken as 0.3%")
     fees = taker_fees(settings) or {s: TMN_TAKER_FEE for s in markets}
+    return histories, spreads, fees
+
+
+def run_study(symbols: list[str], settings: Settings, stops: list[float]) -> int:
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    histories, spreads, fees = past_inputs(markets, settings)
+    print(f"Rebuilding the features at every past hour for {' '.join(markets)} ...")
+    print(study_report(scan(histories, spreads, fees), histories, stops))
+    return 0
+
+
+def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int,
+                   any_time: bool) -> int:
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    histories, spreads, fees = past_inputs(markets, settings)
+    newest = int(min(h.minutes[-1][0] for h in histories.values() if h.minutes))
+    start, end = newest - days * 86400, newest - 86400
+    if any_time:
+        times = sample_times(start, end, moments, seed)
+        kind = "moments"
+    else:
+        print("Finding past hours with an active setup ...")
+        candidates = sorted({r["t"] for r in scan(histories, spreads, fees) if r["features"]["setups"]})
+        times = pick_times([t for t in candidates if start <= t <= end], moments, seed)
+        kind = f"moments with an active setup (of {len(candidates)})"
     base_url, model = settings.get("LLM_BASE_URL"), settings.get("LLM_MODEL")
     log = DATA_DIR / "replay" / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.jsonl"
-    print(f"Replaying {len(times)} moments from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
+    print(f"Replaying {len(times)} {kind} from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
     results = run_replay(times, histories, spreads, fees,
                          lambda messages: chat(base_url, model, settings.get("LLM_API_KEY"), messages, json_mode=True),
                          log, workers)
@@ -380,6 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     replayer.add_argument("--days", type=int, default=60, help="pick moments from the last N days (default 60)")
     replayer.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
     replayer.add_argument("--workers", type=int, default=4, help="AI calls at the same time (default 4)")
+    replayer.add_argument("--any-time", action="store_true", help="pick any moments, not only ones with a setup")
+    studier = commands.add_parser("study", help="how each buy setup did in the past, without the AI")
+    studier.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    studier.add_argument("--stops", type=float, nargs="*", default=[2.0, 3.0, 4.0],
+                         help="stop-losses to try, in 1h ATRs below the entry (default 2 3 4)")
     runner = commands.add_parser("run", help="decide on a fixed beat and log every cycle (no orders)")
     runner.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     runner.add_argument("--interval", type=int, default=DECIDE_EVERY,
@@ -397,7 +429,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ai":
         return run_ai(Settings.load())
     if args.command == "replay":
-        return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers)
+        return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers,
+                              args.any_time)
+    if args.command == "study":
+        return run_study(args.symbols, Settings.load(), args.stops)
     if args.command == "run":
         return run_loop(args.symbols, Settings.load(), args.interval, args.cycles)
     if args.command == "decide":

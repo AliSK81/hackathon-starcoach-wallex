@@ -11,13 +11,13 @@ from wx.rules import MarketRules
 KEY = "sk-secret-key-value"
 
 
-def features(price, rsi=50.0):
+def features(price, rsi=50.0, setups=()):
     f = {name: 0.0 for name in FEATURES}
-    f.update(price=price, rsi14=rsi, regime="trend_up")
+    f.update(price=price, rsi14=rsi, regime="trend_up", setups=list(setups))
     return f
 
 
-TABLE = {"BTCTMN": features(22_000_000_000.0, rsi=72.2), "ETHTMN": features(660_000_000.0)}
+TABLE = {"BTCTMN": features(22_000_000_000.0, rsi=72.2, setups=["sharp_drop"]), "ETHTMN": features(660_000_000.0)}
 
 
 def rules(symbol, base):
@@ -27,8 +27,8 @@ def rules(symbol, base):
 RULES = {"BTCTMN": rules("BTCTMN", "BTC"), "ETHTMN": rules("ETHTMN", "ETH")}
 
 
-def item(symbol="BTCTMN", action="BUY", confidence=0.7, cited=("rsi14",)):
-    return {"symbol": symbol, "action": action, "confidence": confidence, "reason": "r",
+def item(symbol="BTCTMN", action="BUY", confidence=0.7, cited=("rsi14",), setup="sharp_drop"):
+    return {"symbol": symbol, "action": action, "confidence": confidence, "setup": setup, "reason": "r",
             "cited": list(cited), "invalidation": "i"}
 
 
@@ -45,6 +45,7 @@ def test_good_buy_keeps_real_values_of_cited_features():
     btc = by_symbol(decisions)["BTCTMN"]
     assert (view, problems) == ("up", [])
     assert (btc["action"], btc["confidence"], btc["cited"], btc["problems"]) == ("BUY", 0.7, {"rsi14": 72.2}, [])
+    assert btc["setup"] == "sharp_drop"
     assert by_symbol(decisions)["ETHTMN"]["action"] == "HOLD"
 
 
@@ -54,6 +55,7 @@ def test_bad_parts_turn_into_hold_with_a_reason():
         "not a number from 0 to 1": item(confidence=1.5),
         "nothing to sell": item(action="SELL"),
         "without any known feature": item(cited=("magic", {"x": 1})),
+        "which is not active here (active: sharp_drop)": item(setup="breakout"),
     }
     for expected, bad in cases.items():
         d = by_symbol(check_answer(answer(bad), TABLE, {})[1])["BTCTMN"]
@@ -65,6 +67,24 @@ def test_unknown_cited_names_are_flagged_but_known_ones_kept():
     d = by_symbol(check_answer(answer(item(cited=("rsi14", "moon"))), TABLE, {})[1])["BTCTMN"]
     assert d["action"] == "BUY" and d["cited"] == {"rsi14": 72.2}
     assert d["problems"] == ["cited unknown features: moon"]
+
+
+def test_buy_needs_an_active_setup_in_that_market():
+    d = by_symbol(check_answer(answer(item("ETHTMN")), TABLE, {})[1])["ETHTMN"]
+    assert d["action"] == "HOLD" and d["setup"] == ""
+    assert d["problems"] == ["BUY through setup 'sharp_drop', which is not active here (active: none)"]
+
+
+def test_no_setup_and_nothing_held_means_no_ai_call():
+    def ask(messages):
+        raise AssertionError("the AI must not be asked")
+
+    quiet = {"ETHTMN": features(660_000_000.0)}
+    record = decide(quiet, 5_000_000, {}, ask)
+    assert record["driver"] == "rules" and record["decisions"][0]["action"] == "HOLD"
+    held = {"ETHTMN": {"qty": "1", "value_tmn": 660_000_000}}
+    record = decide(quiet, 5_000_000, held, lambda m: reply(json.dumps(answer(item("ETHTMN", "SELL", setup="")))))
+    assert record["driver"] == "ai" and record["decisions"][0]["action"] == "SELL"
 
 
 def test_sell_is_allowed_when_we_hold_the_coin():
@@ -112,6 +132,8 @@ def test_prompt_has_meanings_markets_and_cash():
     facts = json.loads(user["content"])
     assert system["role"] == "system" and "JSON" in system["content"]
     assert facts["feature_meanings"] == FEATURES and facts["markets"] == TABLE
+    assert set(facts["setup_meanings"]) == {"sharp_drop", "oversold", "breakout", "trend_momentum"}
+    assert facts["market_names"] == ["BTCTMN", "ETHTMN"]
     assert facts["cash_tmn"] == "unknown" and facts["held"] == {}
 
 

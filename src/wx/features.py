@@ -13,6 +13,7 @@ from pathlib import Path
 
 from wx import indicators as ind
 from wx.candles import KEEP_DAYS, SIZES, candle_path, load_candles, update_candles
+from wx.setups import active
 from wx.wallex import fetch_best_prices
 
 HOUR = 3600
@@ -52,6 +53,7 @@ FEATURES = {
     "zero_volume_hours_24": "hours with no trades in the last 24",
     "regime": "trend_up / trend_down (ADX above 25), range (ADX below 20), or transition",
     "data_age_min": "minutes since the newest saved 1-minute candle started",
+    "setups": "buy setups whose rule holds now (see setup_meanings). A BUY must name one of these",
 }
 
 
@@ -113,7 +115,7 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
     else:
         regime = "transition"
 
-    return {
+    features = {
         "price": price,
         "spread_pct": round(spread_pct, 3),
         "round_trip_cost_pct": None if taker_fee is None else round(2 * taker_fee * 100 + spread_pct, 3),
@@ -143,6 +145,8 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
         "regime": regime,
         "data_age_min": round((now - minutes[-1][0]) / 60, 1),
     }
+    features["setups"] = active(features)
+    return features
 
 
 def market_features(symbol: str, data_dir: Path, taker_fee: float | None = None, now: int | None = None) -> dict:

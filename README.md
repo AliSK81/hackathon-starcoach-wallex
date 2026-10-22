@@ -70,7 +70,13 @@ This makes a decision like `wx decide` every 15 minutes, on the beat (at :00, :1
 uv run wx replay
 ```
 
-This asks the AI about 40 past moments, rebuilt from the saved candles. Then it shows how often the AI bought, and how the price moved in the next 24 hours after each BUY and HOLD, after costs. `--moments`, `--days` and `--seed` change which moments. It needs the AI settings.
+This asks the AI about 40 past moments with an active buy setup, rebuilt from the saved candles. Then it compares the AI's buys with taking every setup and with doing nothing, over the next 24 hours, with a stop-loss and after costs. `--moments`, `--days` and `--seed` change which moments. `--any-time` picks any moments. It needs the AI settings.
+
+```bash
+uv run wx study
+```
+
+This shows how each buy setup did over the saved history, without the AI: held 24 hours, and with stop-losses of 2, 3 and 4 ATR. It takes about 30 seconds. It needs no AI.
 
 ## Keys
 

@@ -29,6 +29,9 @@ HORIZON = 24 * HOUR
 BEAT = 900  # moments fall on the same 15-minute beat as `wx run`
 CASH_TMN = 5_000_000
 
+# Stop-loss for the test, in 1h ATRs below the entry. Chosen with `wx study` (DECISIONS D23).
+STOP_ATR = 4.0
+
 
 class History:
     """All saved candles for one market, as floats, oldest first."""
@@ -48,6 +51,23 @@ class History:
         i = bisect.bisect_right(self.minute_starts, t - MINUTE)
         return self.minutes[i - 1][4] if i else None
 
+    def exit_after(self, t: int, entry: float, stop_pct: float | None) -> tuple[float, bool]:
+        """Price change from entry at t to the exit, in %, and whether the stop was hit.
+
+        The exit is the close 24 hours later, or the stop if a 1-minute low
+        reaches it first. If a candle opens below the stop, the exit is that open.
+        """
+        stop = entry * (1 - stop_pct / 100) if stop_pct else None
+        if stop is not None:
+            first = bisect.bisect_left(self.minute_starts, t)
+            last = bisect.bisect_right(self.minute_starts, t + HORIZON - MINUTE)
+            for candle in self.minutes[first:last]:
+                if candle[1] <= stop:
+                    return (candle[1] / entry - 1) * 100, True
+                if candle[3] <= stop:
+                    return (stop / entry - 1) * 100, True
+        return (self.close_at(t + HORIZON) / entry - 1) * 100, False
+
     def features_at(self, t: int, spread_pct: float, taker_fee: float | None) -> dict:
         """The features as they were at t. Only candles that ended by t are used."""
         h = bisect.bisect_right(self.hour_starts, t - HOUR)
@@ -60,10 +80,25 @@ class History:
         return build_features(hours, minutes, last - half, last + half, t, taker_fee)
 
 
+def outcome(history: History, t: int, features: dict, stop_atr: float | None = STOP_ATR) -> dict:
+    """What a buy at t would have made: held 24 hours, and with the stop-loss. Net is after the cost."""
+    cost = features["round_trip_cost_pct"] or 0.0
+    fwd, _ = history.exit_after(t, features["price"], None)
+    stop_pct = stop_atr * features["atr14_pct"] if stop_atr else None
+    with_stop, stopped = history.exit_after(t, features["price"], stop_pct)
+    return {"fwd_24h_pct": round(fwd, 2), "net_pct": round(fwd - cost, 2),
+            "net_stop_pct": round(with_stop - cost, 2), "stopped": stopped}
+
+
 def sample_times(start: int, end: int, count: int, seed: int) -> list[int]:
     """`count` different moments on the beat between start and end, picked at random but repeatable."""
     beats = range(start - start % BEAT + BEAT, end - end % BEAT + 1, BEAT)
     return sorted(random.Random(seed).sample(beats, min(count, len(beats))))
+
+
+def pick_times(candidates: list[int], count: int, seed: int) -> list[int]:
+    """`count` of the candidate moments, picked at random but repeatable."""
+    return sorted(random.Random(seed).sample(candidates, min(count, len(candidates))))
 
 
 def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, float],
@@ -76,12 +111,7 @@ def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, floa
         except ValueError as error:
             feature_errors[symbol] = str(error)
     record = decide(table, CASH_TMN, {}, ask) if table else {"driver": "none", "decisions": []}
-    outcomes = {}
-    for symbol, features in table.items():
-        later = histories[symbol].close_at(t + HORIZON)
-        fwd = round((later / features["price"] - 1) * 100, 2)
-        cost = features["round_trip_cost_pct"] or 0.0
-        outcomes[symbol] = {"fwd_24h_pct": fwd, "net_pct": round(fwd - cost, 2)}
+    outcomes = {symbol: outcome(histories[symbol], t, features) for symbol, features in table.items()}
     moment = datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="minutes")
     return {"moment": moment, "markets": table, "feature_errors": feature_errors, **record, "outcomes": outcomes}
 
@@ -108,29 +138,35 @@ def run_replay(times: list[int], histories: dict[str, History], spreads: dict[st
 
 
 def summary(results: list[dict]) -> str:
-    """How often the AI bought, and how BUY and HOLD did over the next 24 hours, after costs."""
-    rows = [(d, r["outcomes"][d["symbol"]]) for r in results for d in r["decisions"] if d["symbol"] in r["outcomes"]]
-    lines = [
-        f"Moments: {len(results)}. AI failures: {sum(r['driver'] != 'ai' for r in results)}. "
-        f"Market decisions: {len(rows)}. Problems found: {sum(len(d['problems']) for d, _ in rows)}.",
-        "Next 24 hours, per action (net = after the round-trip cost):",
-    ]
-    for action in ("BUY", "SELL", "HOLD"):
-        picked = [o for d, o in rows if d["action"] == action]
-        if picked:
-            lines.append(
-                f"  {action:<4} {len(picked):>4} decisions. Average move {mean(o['fwd_24h_pct'] for o in picked):+.2f}%, "
-                f"average net {mean(o['net_pct'] for o in picked):+.2f}%, net above 0 in "
-                f"{sum(o['net_pct'] > 0 for o in picked) / len(picked):.0%}."
-            )
-    if rows:
-        lines.append(
-            f"  If we had bought every market every time: average net {mean(o['net_pct'] for _, o in rows):+.2f}%, "
-            f"net above 0 in {sum(o['net_pct'] > 0 for _, o in rows) / len(rows):.0%}."
-        )
-    buys = {}
-    for d, _ in rows:
+    """The AI's buys, every active setup, and doing nothing, over the next 24 hours.
+
+    Results use the stop-loss (STOP_ATR) and are net of the round-trip cost.
+    """
+    rows = [(r, d) for r in results for d in r["decisions"] if d["symbol"] in r["outcomes"]]
+    buys = [r["outcomes"][d["symbol"]]["net_stop_pct"] for r, d in rows if d["action"] == "BUY"]
+    setups = [(r["outcomes"][d["symbol"]]["net_stop_pct"], d["action"] == "BUY")
+              for r, d in rows if r["markets"][d["symbol"]]["setups"]]
+    skipped = [net for net, bought in setups if not bought]
+    counts = {a: sum(d["action"] == a for _, d in rows) for a in ("BUY", "SELL", "HOLD")}
+
+    def line(name: str, nets: list[float]) -> str:
+        if not nets:
+            return f"  {name:<34} none"
+        return (f"  {name:<34} {len(nets):>4}  average net {mean(nets):+.2f}%, "
+                f"net above 0 in {sum(n > 0 for n in nets) / len(nets):.0%}, total {sum(nets):+.1f}%")
+
+    per_setup = {}
+    for r, d in rows:
         if d["action"] == "BUY":
-            buys[d["symbol"]] = buys.get(d["symbol"], 0) + 1
-    lines.append("BUYs per market: " + (", ".join(f"{s} {n}" for s, n in buys.items()) or "none"))
-    return "\n".join(lines)
+            per_setup[d["setup"]] = per_setup.get(d["setup"], 0) + 1
+    return "\n".join([
+        f"Moments: {len(results)}. AI failures: {sum(r['driver'] == 'fallback' for r in results)}. "
+        f"Market decisions: {len(rows)} ({counts['BUY']} BUY, {counts['SELL']} SELL, {counts['HOLD']} HOLD). "
+        f"Problems found: {sum(len(d['problems']) for _, d in rows) + sum(len(r.get('problems', [])) for r in results)}.",
+        f"Next 24 hours, with a stop {STOP_ATR:g} ATR below the entry, net of the round-trip cost:",
+        line("AI buys", buys),
+        line("every active setup (no AI)", [net for net, _ in setups]),
+        line("setups the AI skipped", skipped),
+        "  doing nothing                         0  average net +0.00%",
+        "AI buys per setup: " + (", ".join(f"{k} {v}" for k, v in per_setup.items()) or "none"),
+    ])

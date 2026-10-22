@@ -373,3 +373,31 @@ Not done yet:
 
 Next change idea:
 - Setups: code flags the setups from F17 with their past results. The AI decides which to take. The replay compares the AI with taking every setup and with doing nothing, with a stop-loss on each entry.
+
+### Change 13 — buy setups in code, `wx study`, and the AI tested against them — 2026-10-22
+Phase: 2, results review
+How to see it: `uv run wx study` (30 s, no AI), then `uv run wx replay` (about 10 minutes)
+Proof it works:
+- `wx study` (F19): no setup is clearly above 0 after costs. The best is sharp_drop, +0.51% +/- 0.35 a trade. Every stop lowered the average. 4 ATR lowered it least.
+- `wx replay` on 40 setup moments (F20): the AI's 21 buys averaged -0.87%. Taking every setup averaged +0.15%. The setups the AI skipped averaged +0.44%. The AI made the result worse.
+- No AI failure and no problem found in 240 market decisions. Every BUY named an active setup.
+- `uv run pytest` passed 78 tests, with no internet.
+
+Bug found by a test and fixed: in a flat market the typical move is 0, so sharp_drop fired on a 0% change. It now needs a real fall.
+Research: research file 06, setups and stops.
+Questions: none
+Decisions: D22, D23. Facts F19, F20.
+
+Shipped:
+- `src/wx/setups.py`: 4 buy setups. A new `setups` feature lists the active ones.
+- The prompt and check: a BUY must name an active setup. With no active setup and nothing held, the AI is not asked (driver `rules`). This also saves most AI calls in `wx run`.
+- `wx replay`: picks moments with an active setup, simulates a stop, and compares the AI with taking every setup and with doing nothing.
+- `src/wx/study.py` and `wx study [--stops 2 3 4]`.
+- Tests: 78 in all. New ones cover the stop exit, the study, and BUY without an active setup.
+
+Not done yet:
+- The AI does not add value yet. In both replays it prefers trend setups and avoids buying drops, and the data says the opposite.
+- The edges are small. Costs (0.6% to 1.2% a round trip) are the biggest problem.
+
+Next change idea:
+- Try two AI roles in the replay, each against "take every setup": (1) the AI gets each setup's past results, computed only from data before that moment, and takes a setup unless it sees a specific warning; (2) code takes the mean-reversion setups, and the AI only vetoes in a market-wide crash. Keep whichever beats the setups alone, and say so honestly if neither does.

@@ -2,7 +2,8 @@
 
 The AI gets the features (with their meanings), our cash and what we hold.
 It answers in JSON: BUY, SELL or HOLD per market, with a confidence, a reason
-and the feature names it used. Code checks every part. Anything wrong turns
+and the feature names it used. A BUY must name a setup that is active for
+that market (setups.py). Code checks every part. Anything wrong turns
 that market into HOLD, and the problem is logged. If the AI fails, every
 market is HOLD and the record says driver "fallback".
 
@@ -22,6 +23,7 @@ from wx.features import FEATURES
 from wx.llm import LLMError, Reply, parse_json
 from wx.prices import append_log
 from wx.rules import MarketRules
+from wx.setups import SETUPS
 
 ACTIONS = ("BUY", "SELL", "HOLD")
 MAX_REASON = 400
@@ -34,18 +36,23 @@ How the bot works:
 - Spot only, long only. All markets are quoted in Toman (TMN). We can only sell a coin we hold.
 - Code has computed every number for you. Do not do maths and do not invent numbers.
   Base each decision on the features you are given, and name the ones you used.
-- You do not choose the order size, the price or the stop-loss. Code does that, and code
-  can still refuse or shrink your decision.
+- You do not choose the order size, the price or the stop-loss. Code does that. Code puts a
+  stop-loss below every entry, and can still refuse or shrink your decision.
 - We hold a position for about a day (roughly 12 to 48 hours), not for minutes or one hour.
   One hour's move is usually smaller than our costs, so judge each market over the next day.
 - Every buy then sell pays round_trip_cost_pct (fees plus spread). Compare it with
-  typical_24h_move_pct, the usual size of a one-day move. BUY when the features point to the
-  price rising over the next day by clearly more than round_trip_cost_pct.
-- HOLD when there is no clear edge. Do not trade just to trade, but do not wait for a
-  perfect setup either: a sound setup whose likely gain beats the cost is worth a BUY.
+  typical_24h_move_pct, the usual size of a one-day move.
+
+Buy setups:
+- Code checks fixed buy setups on every market. The ones that hold now are in the "setups"
+  feature, and setup_meanings says what each one is.
+- You may only BUY a market through one of its active setups, and you must name it.
+- Your job is to judge each active setup: take it, or skip it. Take it when the other features
+  support it and the likely gain over the next day beats round_trip_cost_pct. Skip it when they
+  warn against it, and say which features warn. A market with no active setup is HOLD.
 
 Actions:
-- BUY: open or add to a position in this market.
+- BUY: open or add to a position, through an active setup of this market.
 - SELL: sell what we hold in this market. Only for markets listed in "held".
 - HOLD: do nothing.
 
@@ -56,6 +63,7 @@ Reply with one JSON object and nothing else:
     {{
       "symbol": "<market, e.g. BTCTMN>",
       "action": "BUY" | "SELL" | "HOLD",
+      "setup": "<for a BUY: the active setup you take. Otherwise empty>",
       "confidence": <number from 0 to 1>,
       "reason": "<why, at most {MAX_REASON} characters>",
       "cited": ["<feature names you used, e.g. rsi14>"],
@@ -63,7 +71,7 @@ Reply with one JSON object and nothing else:
     }}
   ]
 }}
-Give exactly one decision for every market."""
+Give exactly one decision for every market. Write each market name exactly as given."""
 
 
 def code_version() -> str:
@@ -100,6 +108,8 @@ def holdings(balances: dict[str, dict], rules: dict[str, MarketRules], table: di
 def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict) -> list[dict]:
     facts = {
         "feature_meanings": FEATURES,
+        "setup_meanings": {name: meaning for name, (meaning, _) in SETUPS.items()},
+        "market_names": list(table),
         "cash_tmn": cash_tmn if cash_tmn is not None else "unknown",
         "held": held,
         "markets": table,
@@ -111,7 +121,7 @@ def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict) -> 
 
 
 def hold(symbol: str, problem: str | None = None) -> dict:
-    return {"symbol": symbol, "action": "HOLD", "confidence": 0.0, "reason": "", "cited": {},
+    return {"symbol": symbol, "action": "HOLD", "confidence": 0.0, "setup": "", "reason": "", "cited": {},
             "invalidation": "", "problems": [problem] if problem else []}
 
 
@@ -141,10 +151,16 @@ def check_decision(item: dict, features: dict, held: dict) -> dict:
     if action != "HOLD" and not cited:
         problems.append(f"{action} without any known feature cited")
         action = "HOLD"
+    setup = str(item.get("setup") or "")
+    if action == "BUY" and setup not in features.get("setups", []):
+        problems.append(f"BUY through setup {setup!r}, which is not active here "
+                        f"(active: {', '.join(features.get('setups', [])) or 'none'})")
+        action = "HOLD"
     return {
         "symbol": symbol,
         "action": action,
         "confidence": confidence,
+        "setup": setup if action == "BUY" else "",
         "reason": str(item.get("reason") or "")[:MAX_REASON],
         "cited": cited,
         "invalidation": str(item.get("invalidation") or "")[:MAX_REASON],
@@ -176,8 +192,14 @@ def check_answer(answer: dict, table: dict[str, dict], held: dict) -> tuple[str,
 
 
 def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callable[[list[dict]], Reply]) -> dict:
-    """Ask the AI and return the checked decision record. Never raises for an AI problem."""
+    """Ask the AI and return the checked decision record. Never raises for an AI problem.
+
+    With no active setup and nothing held, there is nothing to decide. The AI
+    is not asked, every market is HOLD, and the record says driver "rules".
+    """
     record = {"driver": "ai", "error": None, "ai": None, "market_view": "", "problems": []}
+    if not held and not any(f.get("setups") for f in table.values()):
+        return {**record, "driver": "rules", "decisions": [hold(s, None) for s in table]}
     try:
         reply = ask(build_messages(table, cash_tmn, held))
     except LLMError as error:

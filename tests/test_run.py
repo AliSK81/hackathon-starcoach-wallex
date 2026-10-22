@@ -6,7 +6,7 @@ from wx.config import Settings
 from wx.llm import LLMError, Reply
 
 SETTINGS = {"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-secret"}
-FEATURES = {"price": 1.0, "rsi14": 40.0}
+FEATURES = {"price": 1.0, "rsi14": 25.0, "setups": ["oversold"]}
 
 
 def test_beat_survives_a_failed_step(capsys):
