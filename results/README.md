@@ -14,4 +14,4 @@ Saved outputs behind the facts in [DECISIONS.md](../docs/DECISIONS.md). Each one
 
 Each replay line holds one past moment: all features, the AI's full answer and reasoning, the checked decisions, and how each trade played out. `--from` prints the summary without calling the AI.
 
-The backtest and study depend on the candles you have. A re-run on a later date uses a different 120 days, so the numbers will differ. With the same candles, they are the same every time (fixed spreads, F38).
+The backtest and study depend on the candles you have. A re-run on a later date uses a different 120 days, so the numbers will differ. With the same candles, they are the same every time (fixed spreads, F40).

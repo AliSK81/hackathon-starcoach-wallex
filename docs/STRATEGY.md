@@ -77,9 +77,9 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 
 | Test | What | Result |
 |---|---|---|
-| Backtest, 88 days, our 6 markets | trend, limit orders, with the risk check | +35.1%, worst drawdown 8.2%. Both halves positive. (F25, spreads F38) |
+| Backtest, 88 days, our 6 markets | trend, limit orders, with the risk check | +35.6%, worst drawdown 8.2%. Both halves positive. (F25, spreads F40) |
 | Backtest, 88 days, 12 other markets | the same rule, never tuned on them | +34.5%, worst drawdown 13.1%. Both halves positive. (F25, fixed spreads F30) |
-| 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 48% of windows. Average +0.75%. Worst -4.5%, best +14.7%. (F28) |
+| 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 48% of windows. Average +0.77%. Worst -4.5%, best +14.7%. (F28) |
 | AI replay | 40 past moments per role | The AI's free choices did not beat the rules (F20, F21, F27). |
 | AI replay, checked veto | the same 40 trend moments | Buys the AI let through: +1.53% each. All trend buys: +1.44%. The 6 it stopped: -0.91%. (F31) |
 | AI replay, agent (checked veto + tools) | the same 40 trend moments | Buys the AI let through: +1.34% each. All trend buys: +1.24%. The 7 it stopped: -0.88%. 4.3 tool calls a moment. (F33) |
