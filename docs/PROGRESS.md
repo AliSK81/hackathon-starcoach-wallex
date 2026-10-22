@@ -539,3 +539,28 @@ Not done yet:
 
 Next change idea:
 - Read the agent replay. Mark Phase 2 done in the roadmap if nothing new comes up. Keep the shadow book running.
+
+### Change 19 — the agent is the default, a per-trade log, and fixes found in live shadow — 2026-10-22
+Phase: 3, 6 and 7
+How to see it: `uv run wx run --shadow`, `uv run wx tradelog`, `uv run wx shadow`
+Proof it works:
+- Agent replay (F33): buys it let through +1.64%, every trend buy +1.48%. So `agent` is the default role (D31).
+- `wx tradelog` joins each shadow order with the decision that placed it, and shows the AI's reason and the risk verdict.
+- Fixes found by reading live shadow logs: tool calls were not saved in the record; a held market was "bought" again when the AI said HOLD; the AI could not cite its own position fields. All three are fixed and tested.
+- `uv run pytest` passed 117 tests.
+
+Research: none new.
+Questions: none
+Decisions: D31. Facts F32, F33.
+
+Shipped:
+- `tradelog.py` and `wx tradelog`.
+- Phase 6 and 7 plans. Phase 2 marked done in the roadmap.
+- STRATEGY.md: why the AI gets our own read-only tools and not the Wallex MCP server.
+
+Not done yet:
+- The agent replay is running again, to save its tool calls as evidence.
+- The shadow book runs with the agent role. No position has closed yet.
+
+Next change idea:
+- Save the agent replay in `results/`. Let the shadow book run until positions close, then check that shadow and backtest agree.
