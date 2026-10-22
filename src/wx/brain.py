@@ -371,6 +371,7 @@ def build_graph(b: Brain, checkpointer=None):
         view = portfolio_view(state["account"], state["positions"], state["hours_left"], b.executor.ledger(),
                               state["now"], b.env)
         facts = {
+            "now_utc": time.strftime("%Y-%m-%d %H:%M", time.gmtime(state["now"])),
             "hours_left": state["hours_left"], "profile": state["profile"], "account_tmn": state["account"],
             "positions": state["positions"],
             "result_pct": {k: view[k] for k in ("today_pct", "drawdown_pct", "since_start_pct")},

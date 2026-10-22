@@ -311,5 +311,9 @@ def test_market_closes_file(tmp_path):
     t = market_closes(tmp_path)["USDTTMN"]
     closes = {"USDTTMN": t}
     assert closing(closes, "USDTTMN", t - 29 * 60, 30) and not closing(closes, "USDTTMN", t - 31 * 60, 30)
+    (tmp_path / "market_closes.json").write_text('{"USDTTMN": ["2026-10-22T20:00", "2026-10-23T08:00"]}',
+                                                 encoding="utf-8")
+    assert "USDTTMN" in market_closes(tmp_path, now=t)  # closed
+    assert market_closes(tmp_path, now=t + 12 * 3600) == {}  # reopened at 08:00
     (tmp_path / "market_closes.json").write_text("not json", encoding="utf-8")
     assert market_closes(tmp_path) == {}
