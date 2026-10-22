@@ -343,10 +343,18 @@ def run_kill(symbols: list[str], settings: Settings) -> int:
 
 
 def run_order_test(symbol: str, settings: Settings) -> int:
-    """Check real order placement without buying: a minimum buy 20% under the price, read back, then cancelled."""
+    """Check real order placement without buying: a minimum buy 20% under the price, read back, then cancelled.
+
+    Every step is also saved in data/live/order_test.jsonl, so the result can be read later."""
     from decimal import Decimal
 
     from wx.orders import Trader, new_client_id
+    from wx.prices import append_log
+    log = DATA_DIR / "live" / "order_test.jsonl"
+
+    def step(name: str, **extra) -> None:
+        append_log(log, {"time": datetime.now(UTC).isoformat(timespec="seconds"), "version": code_version(),
+                         "step": name, **{k: str(v) for k, v in extra.items()}})
     from wx.wallex import fetch_best_prices
     markets = pick_markets([symbol])
     key = settings.get("WALLEX_API_KEY")
@@ -359,20 +367,29 @@ def run_order_test(symbol: str, settings: Settings) -> int:
     qty = rules.round_qty(rules.min_notional * Decimal("1.2") / price) + rules.min_qty
     trader, cid = Trader(key), new_client_id("test")
     print(f"Placing LIMIT BUY {qty} {rules.symbol} at {price} (20% under the bid, so it should not fill), id {cid}")
+    step("placing", symbol=rules.symbol, quantity=qty, price=price, bid=bid, client_id=cid)
     try:
         placed = trader.place(rules.symbol, "BUY", qty, price, cid)
         print(f"  placed: status {placed.status}, active {placed.active}")
+        step("placed", state=placed)
         read = trader.get(cid)
         print(f"  read back: {read}")
-        print(f"  open orders: {[o.client_id for o in trader.open_orders()]}")
+        step("read back", state=read)
+        open_ids = [o.client_id for o in trader.open_orders()]
+        print(f"  open orders: {open_ids}")
+        step("open orders", ids=open_ids)
     except WallexError as error:
         print(f"  failed: {error}")
+        step("failed", error=error)
         return 1
     finally:
         try:
-            print(f"  cancelled: {trader.cancel(cid)}")
+            cancelled = trader.cancel(cid)
+            print(f"  cancelled: {cancelled}")
+            step("cancelled", state=cancelled)
         except WallexError as error:
             print(f"  cancel failed, cancel it on the website: {error}")
+            step("cancel failed", error=error)
     return 0
 
 
