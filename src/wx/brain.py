@@ -107,6 +107,15 @@ EVIDENCE = {
         "stops 2/3/4 ATR": "every stop lowered the average a little; 4 ATR lowered it least (F19)",
         "time exit after 12h on dips": "used by the dip setups above",
     },
+    "usdt_as_cash": {
+        "what": "holding USDT instead of Toman: buy USDTTMN, sell it 20 hours later, maker both ways, 0.51% round "
+                "trip, every start hour, 120 days (F67)",
+        "any time": "-0.16% on average, up in 41%, worst -4.18%; last 30 days -0.01%",
+        "after USDTTMN rose over 1.5% in 24 hours": "1st half -0.03% (45% up, about 23 episodes); 2nd half +0.46% "
+                                                    "(66% up, about 30 episodes): it worked in one half only",
+        "use": "a choice like any market, inside the same limits; it pays only if the Toman falls more than 0.51% "
+               "before you sell",
+    },
     "time_of_day": "Most of the Toman's fall and coin gains came 01:00-13:00 UTC (Tehran daytime): USDTTMN +0.33% "
                    "to +0.49% on average then, against +0.07% to +0.09% from 13:00 to 01:00 (F44)",
     "how_big_12h": "A coin rose 20% in 12 hours in 0.03% of windows on our markets. Perfect hindsight (buy the low, "
@@ -241,6 +250,9 @@ reject it.
 Your pace follows the time left (`profile`): with under a day left you are in sprint. Then decide every 5 minutes
 on 1, 5 and 15-minute data, and plan holds of minutes to a few hours; a buy that can't work before the end is a
 bad buy. With days or weeks left, slow down and use 1-hour and 4-hour data.
+
+USDTTMN is a market like the others: holding USDT instead of Toman is a choice you may make, or not, from the
+evidence (usdt_as_cash) and the Toman's trend now. It is sold into Toman at the end like every coin.
 
 Work like a professional:
 1. The skill trader-core, the skill named in `profile`, the hard limits, the setups and our past evidence are
