@@ -757,3 +757,15 @@ Decisions: D43, D44. Fact F58.
 
 Not done yet:
 - A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.
+
+### Change 28 — the pace follows the trading time — 2026-10-22
+Phase: 2, 3 and 6
+How to see it: `uv run wx agent --shadow --end-at <end>`, `uv run --no-project --with pandas --with numpy python scripts/study_scalps.py`
+Proof it works:
+- With under a day left the agent runs in sprint: a decision every 5 minutes, fast features from 1-minute data, holds of minutes to hours, 10-minute fill windows (D45). A real cycle took 50 s with data for 21 markets fetched in parallel.
+- Fast strategies on 1-minute data all lost after costs on Wallex (F62). The agent sees this evidence and the sprint playbook.
+- `uv run pytest` passed 162 tests.
+
+Research: the installed trading skills, research file 06 (fee break-even).
+Questions: the user asked for faster trading and shorter-term analysis when the trading time is short.
+Decisions: D45. Fact F62.

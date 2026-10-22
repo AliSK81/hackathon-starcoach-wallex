@@ -263,7 +263,10 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
     brain = make_brain(markets, settings, DATA_DIR, executor, end, store, officer, universe=universe)
     ends = datetime.fromtimestamp(end, UTC).strftime("%Y-%m-%d %H:%M UTC") if end else "never"
     where = "every liquid allowed TMN market" if universe else " ".join(markets)
-    print(f"Agent on {where}, every {interval} s, {name.upper()} orders, trading ends {ends}. "
+    from wx.horizon import profile
+    pace = profile(None if end is None else (end - time.time()) / 3600)
+    print(f"Agent on {where}, {name.upper()} orders, trading ends {ends}. Pace now: {pace.name}, a decision every "
+          f"{min(interval, pace.cycle_seconds)} s (it speeds up as the end comes closer). "
           f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
     return run(brain, DATA_DIR, name, interval, cycles, saver)
 

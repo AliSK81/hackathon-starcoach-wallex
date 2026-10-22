@@ -86,9 +86,11 @@ def load_rows(symbols: list[str], data_dir: Path, now: int) -> tuple[list[dict],
 
 def play(history: History, strategy: str, t: int, f: dict, plan: dict, lookup, symbol: str):
     """How one of the agent's buys played out, with its own exit plan. None if a maker buy never filled."""
-    rule = exit_rule(plan.get("max_hours") or HOLD_HOURS, bool(plan.get("trend_exit")))
+    rule = exit_rule(0, bool(plan.get("trend_exit")))
     return trade(history, strategy, t, f, plan["stop_pct"], "taker" if plan.get("order") == "taker" else "limit",
-                 lambda h: lookup(symbol, h), take_profit_pct=plan.get("target_pct") or 0.0, rule=rule)
+                 lambda h: lookup(symbol, h), take_profit_pct=plan.get("target_pct") or 0.0, rule=rule,
+                 fill_window=int(plan.get("fill_minutes") or 60) * 60,
+                 max_seconds=int((plan.get("max_hours") or HOLD_HOURS) * 3600))
 
 
 def rules_result(t: int, rows_at: dict, histories: dict, lookup) -> list[float]:

@@ -23,9 +23,9 @@ from pathlib import Path
 from wx.brain import Brain, build_graph, open_memory
 from wx.candles import candle_path, load_candles
 from wx.config import Settings
-from wx.cycle import collect_features
 from wx.decide import code_version, log_decision
 from wx.features import HOUR, add_context, closed_bars, market_features
+from wx.horizon import profile
 from wx.llm_cache import SQLiteLLMCache
 from wx.markets import tmn_volume
 from wx.risk import ENVELOPE
@@ -46,6 +46,28 @@ def chat_model(settings: Settings, data_dir: Path | None = None):
                       api_key=settings.get("LLM_API_KEY"), temperature=0, timeout=180, max_retries=2, cache=cache)
 
 
+def parallel_features(markets: dict[str, dict], settings: Settings, data_dir: Path) -> tuple[dict, dict]:
+    """Features of many markets at once (sprint decides every 5 minutes: the data must come fast)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from wx.cycle import taker_fees
+    fees = taker_fees(settings)
+
+    def one(symbol):
+        try:
+            return symbol, market_features(symbol, data_dir, fees.get(symbol)), None
+        except Exception as error:  # one bad market never stops the rest
+            return symbol, None, str(error)
+    table, errors = {}, {}
+    with ThreadPoolExecutor(8) as pool:
+        for symbol, f, error in pool.map(one, markets):
+            if f is not None:
+                table[symbol] = f
+            else:
+                errors[symbol] = error
+    return table, errors
+
+
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
                store, officer: bool = True, env=ENVELOPE, universe: bool = False) -> Brain:
     """With universe, the markets are picked again every cycle: every liquid allowed TMN market (universe.py)."""
@@ -60,7 +82,7 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
                 print(f"Could not refresh the market list: {error}")
                 pick = liquid(markets, executor.held())
             print(f"  {len(pick)} liquid markets: {' '.join(pick)}", flush=True)
-        table, errors = collect_features(pick, settings, data_dir)
+        table, errors = parallel_features(pick, settings, data_dir)
         return add_context(table), errors
 
     def closes(symbol: str, hours: int, now: int) -> list[float]:
@@ -180,7 +202,10 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
                 print("Trading has ended.")
                 break
             if cycles is None or cycle < cycles:
-                time.sleep(interval - time.time() % interval)
+                # The pace follows the time left (horizon.py): every 5 minutes in sprint, slower with more time.
+                pace = profile(None if brain.end_at is None else (brain.end_at - time.time()) / 3600).cycle_seconds
+                step = min(interval, pace) if interval else pace
+                time.sleep(step - time.time() % step)
     except KeyboardInterrupt:
         print("Stopped.")
     finally:

@@ -100,7 +100,7 @@ def test_the_agents_buy_is_sized_by_code_and_placed_with_its_exit_plan():
     # 1% of 5,000,000 lost at a 4% stop plus 0.7% cost: 50,000 / 0.047
     assert d["verdict"]["tmn"] == round(50_000 / 0.047)
     symbol, strategy, tmn, exits = b.executor.bought[0]
-    assert exits == {"target_pct": 3.0, "max_hours": 8.0, "trend_exit": False, "order": "taker"}
+    assert exits == {"target_pct": 3.0, "max_hours": 8.0, "trend_exit": False, "order": "taker", "fill_minutes": 60}
     assert logs[0]["role"] == "brain" and logs[0]["plan"]["approach"] == "normal"
 
 
@@ -209,3 +209,30 @@ def test_every_skill_has_a_description():
     assert {"trader-core", "mean-reversion-dips", "order-book-and-flow", "risk-and-sizing"} <= set(skills)
     assert all(skills.values())
     assert ENVELOPE.max_position < 1 and ENVELOPE.max_exposure < 1  # never all-in
+
+
+def test_the_pace_follows_the_time_left():
+    from wx.horizon import profile
+    assert profile(10).name == "sprint" and profile(10).cycle_seconds == 300
+    assert profile(72).name == "short" and profile(24 * 30).name == "swing" and profile(None).name == "swing"
+    b, _ = brain([plan([buy(max_hours=40)])], {"SOLTMN": market()}, end_at=NOW + 10 * 3600)
+    state = build_graph(b).invoke({})
+    assert state["profile"]["name"] == "sprint" and state["decisions"][0]["max_hours"] == 6.0  # sprint holds
+    assert b.executor.bought[0][3]["fill_minutes"] == 10
+
+
+def test_a_time_limit_is_kept_to_the_minute():
+    from wx.trades import History, trade
+    t0 = 1_700_000_000 - 1_700_000_000 % 3600
+    minutes = [[t0 + 60 * i, 100.0, 100.2, 99.9, 100.0 + i * 0.01, 1.0] for i in range(240)]
+    done = trade(History([], minutes), "agent", t0, {"price": 100.0, "spread_pct": 0.0, "round_trip_cost_pct": 0.6},
+                 50.0, "taker", lambda h: None, max_seconds=25 * 60)
+    assert done.exit_reason == "time" and done.exit_t == t0 + 25 * 60
+
+
+def test_fast_features_from_minutes():
+    from wx.features import fast_features
+    minutes = [[i * 60, 100.0, 100.5, 99.5, 100.0 + (i % 10) * 0.01, 1.0 + (i % 5)] for i in range(1500)]
+    f = fast_features(minutes, 100.05)
+    assert f["rsi14_5m"] is not None and f["vwap_4h_dev_pct"] is not None and 0 <= f["pos_in_1h_range"] <= 1
+    assert fast_features(minutes[:100], 100.0)["rsi14_5m"] is None

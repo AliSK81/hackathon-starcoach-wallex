@@ -115,7 +115,8 @@ class Trade:
 
 def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders: str,
           features_at: Callable[[int], dict | None], now: int | None = None, take_profit_pct: float = 0.0,
-          rule: Callable[[dict, float], bool] | None = None) -> Trade | None:
+          rule: Callable[[dict, float], bool] | None = None, fill_window: int = FILL_WINDOW,
+          max_seconds: int | None = None) -> Trade | None:
     """How a buy at t through `setup` plays out, up to `now` (or to the end of the data).
 
     Entry. "taker": at the mid price now. "limit": at the bid, only if the price
@@ -127,6 +128,8 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
     With `now`, a trade that has not exited yet comes back open (exit_t None).
     take_profit_pct: a resting limit sell that far above the entry (maker fee). If the stop and
     the target fall in the same minute, the stop counts.
+    fill_window: how long a limit buy waits. max_seconds: a time limit, checked to the minute; the position is
+    sold at that minute's close (taker fee and half the spread).
     """
     end = history.end if now is None else now
     if orders == "taker":
@@ -137,7 +140,7 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
     else:
         half_spread = f["spread_pct"] / 2
         entry = f["price"] * (1 - half_spread / 100)
-        entry_t = history.first_below(t, min(t + FILL_WINDOW, end), entry)
+        entry_t = history.first_below(t, min(t + fill_window, end), entry)
         if entry_t is None:
             return None
 
@@ -145,19 +148,23 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
             return MAKER_FEE_PCT + (TAKER_FEE_PCT + half_spread if stopped else MAKER_FEE_PCT)
 
     def closed(exit_t: int, price: float, reason: str) -> Trade:
-        return Trade(entry_t, entry, exit_t, (price / entry - 1) * 100 - cost(reason == "stop"), reason)
+        return Trade(entry_t, entry, exit_t, (price / entry - 1) * 100 - cost(reason in ("stop", "time")), reason)
 
     stop = entry * (1 - stop_pct / 100)
     rule = rule or (SETUPS[setup].exit if setup in SETUPS else exit_rule())
     target = entry * (1 + take_profit_pct / 100) if take_profit_pct else None
+    deadline = entry_t + max_seconds if max_seconds else None
     start, hour = entry_t, math.ceil(entry_t / HOUR) * HOUR
     while True:
-        hit = history.first_touch(start, min(hour, end), stop)
-        reached = history.first_reach(start, min(hour, end), target) if target else None
+        stop_at = min(hour, end, deadline) if deadline else min(hour, end)
+        hit = history.first_touch(start, stop_at, stop)
+        reached = history.first_reach(start, stop_at, target) if target else None
         if reached and (not hit or reached < hit[0]):
             return closed(reached, target, "take profit")
         if hit:
             return closed(*hit, "stop")
+        if deadline and deadline <= min(hour, end):
+            return closed(deadline, history.close_at(deadline), "time")
         if hour > end:
             break
         g = features_at(hour)

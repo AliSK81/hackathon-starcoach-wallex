@@ -1,0 +1,38 @@
+
+=== our 6, last 60 days. Per trade after costs; trades a day across the set.
+strategy                                             target/stop/hold trades/day     avg   win    PF
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  0.8/0.6/60m             5.0  -0.73%   16%  0.05
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  1.2/0.8/120m            5.0  -0.76%   17%  0.11
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  2.0/1.0/240m            4.6  -0.74%   23%  0.21
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  3.0/1.5/480m            4.1  -0.53%   36%  0.46
+breakout (above the 1h high, volume x2)              0.8/0.6/60m            29.3  -0.66%   18%  0.07
+breakout (above the 1h high, volume x2)              1.2/0.8/120m           24.8  -0.66%   21%  0.15
+breakout (above the 1h high, volume x2)              2.0/1.0/240m           19.8  -0.69%   24%  0.24
+breakout (above the 1h high, volume x2)              3.0/1.5/480m           13.5  -0.58%   31%  0.42
+dip scalp (5m RSI<25, 2 sd under)                    0.8/0.6/60m             8.2  -0.57%   28%  0.12
+dip scalp (5m RSI<25, 2 sd under)                    1.2/0.8/120m            7.4  -0.48%   35%  0.29
+dip scalp (5m RSI<25, 2 sd under)                    2.0/1.0/240m            6.9  -0.37%   36%  0.48
+dip scalp (5m RSI<25, 2 sd under)                    3.0/1.5/480m            5.9  -0.36%   40%  0.61
+vwap reversion (1.5% under the 4h VWAP)              0.8/0.6/60m             9.1  -0.55%   42%  0.19
+vwap reversion (1.5% under the 4h VWAP)              1.2/0.8/120m            7.0  -0.54%   40%  0.33
+vwap reversion (1.5% under the 4h VWAP)              2.0/1.0/240m            5.9  -0.52%   37%  0.46
+vwap reversion (1.5% under the 4h VWAP)              3.0/1.5/480m            4.6  -0.41%   40%  0.64
+
+=== other 12, last 60 days. Per trade after costs; trades a day across the set.
+strategy                                             target/stop/hold trades/day     avg   win    PF
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  0.8/0.6/60m            13.3  -0.94%   18%  0.05
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  1.2/0.8/120m           13.1  -0.93%   23%  0.13
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  2.0/1.0/240m           12.6  -0.95%   25%  0.23
+momentum (5m EMA9>21 cross, 15m +0.3%, volume x1.5)  3.0/1.5/480m           11.4  -0.92%   30%  0.36
+breakout (above the 1h high, volume x2)              0.8/0.6/60m            64.0  -0.83%   25%  0.08
+breakout (above the 1h high, volume x2)              1.2/0.8/120m           56.3  -0.82%   28%  0.18
+breakout (above the 1h high, volume x2)              2.0/1.0/240m           46.1  -0.85%   28%  0.28
+breakout (above the 1h high, volume x2)              3.0/1.5/480m           33.9  -0.86%   31%  0.40
+dip scalp (5m RSI<25, 2 sd under)                    0.8/0.6/60m            30.0  -0.62%   33%  0.14
+dip scalp (5m RSI<25, 2 sd under)                    1.2/0.8/120m           27.4  -0.56%   38%  0.30
+dip scalp (5m RSI<25, 2 sd under)                    2.0/1.0/240m           24.5  -0.42%   41%  0.53
+dip scalp (5m RSI<25, 2 sd under)                    3.0/1.5/480m           19.6  -0.30%   42%  0.73
+vwap reversion (1.5% under the 4h VWAP)              0.8/0.6/60m            55.4  -0.59%   45%  0.19
+vwap reversion (1.5% under the 4h VWAP)              1.2/0.8/120m           42.0  -0.52%   45%  0.37
+vwap reversion (1.5% under the 4h VWAP)              2.0/1.0/240m           31.6  -0.44%   42%  0.57
+vwap reversion (1.5% under the 4h VWAP)              3.0/1.5/480m           24.4  -0.39%   41%  0.70

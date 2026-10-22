@@ -52,6 +52,16 @@ FEATURES = {
     "bb_z_20": "last 1h close minus its 20-hour average, in 20-hour standard deviations (below -2 is a deep dip)",
     "trend_4h_pct": "4h EMA 20 above (+) or below (-) the 4h EMA 50, %: the slower trend",
     "rsi14_15m": "15-minute RSI 14, the short-term push",
+    "ret_5m_pct": "price change over the last 5 minutes, %",
+    "ret_30m_pct": "price change over the last 30 minutes, %",
+    "ema9_vs_ema21_5m_pct": "5-minute EMA 9 above (+) or below (-) the EMA 21, %: the fast trend",
+    "rsi14_5m": "5-minute RSI 14",
+    "bb_z_5m": "last 5-minute close minus its 20-bar average, in standard deviations",
+    "atr14_5m_pct": "5-minute ATR 14, the usual size of one 5-minute move, % of price",
+    "vol_ratio_5m": "last 5 minutes' volume divided by the average 5 minutes of the last 4 hours",
+    "vwap_4h_dev_pct": "price above (+) or below (-) the volume-weighted average price of the last 4 hours, %",
+    "range_1h_pct": "high minus low of the last 60 minutes, % of the low",
+    "pos_in_1h_range": "where the price sits in the last 60 minutes' range: 0 = low, 1 = high",
     "bb_pos_20": "last 1h close inside the Bollinger bands (20, 2): 0 = lower band, 1 = upper band",
     "donchian20_pos": "last 1h close inside the previous 20 hours' low-high range: 0 = low, 1 = high",
     "breakout_up": "true if the last 1h close is above the previous 20 hours' high",
@@ -79,6 +89,37 @@ def pct(a: float | None, b: float | None, digits: int = 2) -> float | None:
 
 def rnd(x: float | None, digits: int) -> float | None:
     return None if x is None else round(x, digits)
+
+
+def fast_features(minutes: list[list[float]], price: float) -> dict:
+    """Features from 1-minute candles for short-term trading: 5-minute bars, the last hour, the last 4 hours."""
+    names = ("ret_5m_pct", "ret_30m_pct", "ema9_vs_ema21_5m_pct", "rsi14_5m", "bb_z_5m", "atr14_5m_pct",
+             "vol_ratio_5m", "vwap_4h_dev_pct", "range_1h_pct", "pos_in_1h_range")
+    if len(minutes) < 300:
+        return dict.fromkeys(names)
+    chunks = [minutes[i - 5:i] for i in range(len(minutes), 4, -5)][::-1]  # 5-minute bars, newest last
+    c5 = [ch[-1][4] for ch in chunks]
+    h5 = [max(m[2] for m in ch) for ch in chunks]
+    l5 = [min(m[3] for m in ch) for ch in chunks]
+    v5 = [sum(m[5] for m in ch) for ch in chunks]
+    e9, e21 = ind.ema(c5, 9), ind.ema(c5, 21)
+    atr5 = ind.atr(h5, l5, c5, 14)
+    sd = ind.stdev(c5[-20:])
+    hour, four = minutes[-60:], minutes[-240:]
+    hi, lo = max(m[2] for m in hour), min(m[3] for m in hour)
+    vol4 = sum(m[5] for m in four)
+    vwap = sum(m[4] * m[5] for m in four) / vol4 if vol4 else None
+    avg5 = sum(v5[-49:-1]) / 48 if len(v5) > 48 else None
+    return {
+        "ret_5m_pct": pct(price, minutes[-5][4]), "ret_30m_pct": pct(price, minutes[-30][4]),
+        "ema9_vs_ema21_5m_pct": pct(e9[-1], e21[-1], 3),
+        "rsi14_5m": rnd(ind.rsi(c5, 14)[-1], 1),
+        "bb_z_5m": rnd((c5[-1] - sum(c5[-20:]) / 20) / sd, 2) if sd else 0.0,
+        "atr14_5m_pct": rnd(atr5[-1] / c5[-1] * 100, 3) if atr5[-1] else None,
+        "vol_ratio_5m": rnd(v5[-1] / avg5, 2) if avg5 else None,
+        "vwap_4h_dev_pct": pct(price, vwap) if vwap else None,
+        "range_1h_pct": pct(hi, lo), "pos_in_1h_range": rnd((price - lo) / (hi - lo), 2) if hi > lo else 0.5,
+    }
 
 
 def build_features(hours: list[list[float]], minutes: list[list[float]], bid: Decimal, ask: Decimal,
@@ -127,6 +168,7 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
     closes_4h = closes[::-4][::-1]
     ema20_4h, ema50_4h = ind.ema(closes_4h, 20), ind.ema(closes_4h, 50)
     rsi_15m = ind.rsi([m[4] for m in minutes[::-15]][::-1], 14)
+    fast = fast_features(minutes[-1500:], price)
 
     features = {
         "price": price,
@@ -153,6 +195,7 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
         "bb_z_20": rnd((last - mean20) / sd20, 2) if sd20 else 0.0,
         "trend_4h_pct": pct(ema20_4h[-1], ema50_4h[-1]) if ema50_4h[-1] else None,
         "rsi14_15m": rnd(rsi_15m[-1], 1),
+        **fast,
         "bb_pos_20": rnd((last - (mean20 - 2 * sd20)) / band, 2) if band else 0.5,
         "donchian20_pos": rnd((last - low20) / (high20 - low20), 2) if high20 > low20 else 0.5,
         "breakout_up": last > high20,

@@ -57,6 +57,7 @@ class Position:
     target_pct: float = 0.0  # the agent's exit plan (0 / False = not used)
     max_hours: float = 0.0
     trend_exit: bool = False
+    fill_minutes: int = FILL_WINDOW // 60  # how long the buy waits before it is cancelled
 
     @property
     def stop(self) -> float | None:
@@ -176,7 +177,8 @@ class LiveExecutor:
             return {"placed": False, "error": str(error)}
         p = Position(symbol, setup, float(verdict.tmn), verdict.stop_pct, now, cid,
                      target_pct=float(exits.get("target_pct") or 0), max_hours=float(exits.get("max_hours") or 0),
-                     trend_exit=bool(exits.get("trend_exit")))
+                     trend_exit=bool(exits.get("trend_exit")),
+                     fill_minutes=int(exits.get("fill_minutes") or FILL_WINDOW // 60))
         self.positions_.append(p)
         self.save()
         self.event(now, "buy placed", p, price=str(price), quantity=str(qty), rule=verdict.rule)
@@ -280,7 +282,7 @@ class LiveExecutor:
                         if p.status == "buying":
                             p.status = "cancelled"
                             self.event(now, "buy ended unfilled", p, wallex_status=state.status)
-                    elif now >= p.t + FILL_WINDOW:
+                    elif now >= p.t + p.fill_minutes * 60:
                         self.cancel_buy(p, now)
                 elif p.status == "selling":
                     closed += self.check_sell(p, self.trader.get(p.sell_id), now)
@@ -318,7 +320,7 @@ class LiveExecutor:
                         closed += self.send_sell(p, now, "time limit")
                 elif p.status == "selling":
                     closed += self.check_sell(p, self.trader.get(p.sell_id), now)
-                elif p.status == "buying" and now >= p.t + FILL_WINDOW:
+                elif p.status == "buying" and now >= p.t + p.fill_minutes * 60:
                     self.cancel_buy(p, now)
             except WallexError as error:
                 self.event(now, "guard failed", p, error=str(error))

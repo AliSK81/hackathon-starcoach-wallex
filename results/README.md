@@ -14,6 +14,7 @@ Saved outputs behind the facts in [DECISIONS.md](../docs/DECISIONS.md). Each one
 | `replay_agent_v2.jsonl` | `uv run wx agent-replay --from results/replay_agent_v2.jsonl` | The agent deciding its own trades on 20 past moments, against the fixed rules and holding (F58). |
 | `windows_6.txt`, `windows_12.txt` | `uv run python scripts/test_windows.py 6\|12` | Every rule set and plain holding on 12h, 24h, 3d, 7d, 14d, 30d, 60d windows and the whole history: return, median, share up, worst, best, drawdown, trades (F60). |
 | `trade_report_6.md`, `trade_report_12.md` | `uv run python scripts/trade_report.py 6\|12` | Every trade of every rule set over the whole history; win rate, average win and loss, profit factor, P&L, holding time, exits, per market and setup; trades per market for each window length (F61). |
+| `scalps_study.txt` | `uv run --no-project --with pandas --with numpy python scripts/study_scalps.py` | Fast strategies on 1-minute data (momentum, breakouts, dip scalps, VWAP reversion) with short targets and time limits (F62). |
 | `study_6_markets.txt` | `uv run wx study` | Each setup on its own, with no stop and with 2, 3 and 4 ATR stops. |
 | `replay_trend_free_veto.jsonl` | `uv run wx replay --from results/replay_trend_free_veto.jsonl` | The AI free to stop trend buys. It stopped 70%, and made it worse (F27). |
 | `replay_trend_checked_veto.jsonl` | `uv run wx replay --from results/replay_trend_checked_veto.jsonl` | The AI may stop a buy only with a checked veto. Slightly better than no AI (F31). |

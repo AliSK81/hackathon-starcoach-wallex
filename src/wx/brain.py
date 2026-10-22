@@ -51,6 +51,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.store.sqlite import SqliteStore
 
 from wx.features import FEATURES
+from wx.horizon import Profile, profile
 from wx.llm import LLMError, parse_json
 from wx.risk import ENVELOPE, Account, Envelope, clamp, size_plan
 from wx.setups import SETUPS
@@ -59,7 +60,7 @@ SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 RECENT_CYCLES = 8  # cycle summaries the agent sees from its short-term memory
 MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
-TOKEN_BUDGET = 6_000_000  # AI tokens a UTC day. Above it, no debate and no officer
+TOKEN_BUDGET = 12_000_000  # AI tokens a UTC day (sprint decides every 5 minutes). Above it, no debate
 AUTO_LESSONS = 6  # lessons put in the analyst's facts, losses first
 # The model's whole window is 32,768 tokens: the prompt plus its reasoning and answer (F59). Its reasoning has
 # taken up to about 7,000. Past CLEAR_AT tokens, older tool results are cleared, keeping the newest KEEP_TOOLS.
@@ -72,10 +73,11 @@ def compact(value) -> str:
     return json.dumps(value, default=str, separators=(",", ":"), ensure_ascii=False)
 
 
-def overview_table(table: dict) -> dict:
+def overview_table(table: dict, columns: tuple | None = None) -> dict:
     """The market overview as one header and one row per market: far fewer tokens than a dict per market."""
-    return {"columns": ["symbol", *OVERVIEW],
-            "rows": [[s, *[f.get(k) for k in OVERVIEW]] for s, f in table.items()]}
+    columns = columns or OVERVIEW
+    return {"columns": ["symbol", *columns],
+            "rows": [[s, *[f.get(k) for k in columns]] for s, f in table.items()]}
 
 # What our tests on the past found, for get_evidence. Each entry names the fact in docs/DECISIONS.md.
 EVIDENCE = {
@@ -113,12 +115,26 @@ EVIDENCE = {
     "ai_record": "When the AI judged freely in past replays, it skipped the trades that later did best (F20, F27). "
                  "When it shrank weak trades, it helped a little (F33, F51). Base decisions on numbers, not stories.",
     "costs": "Maker 0.25%, taker 0.30% a side on TMN markets, plus the spread. A round trip costs 0.5% to 1%",
+    "short_term": {
+        "what": "fast strategies on 1-minute data, last 60 days, maker entries, after costs (F62)",
+        "5-minute momentum (EMA 9/21 cross, volume)": "-0.53% to -0.95% a trade, profit factor 0.05-0.46, "
+                                                     "4 to 13 trades a day",
+        "breakout above the 1-hour high with volume": "-0.58% to -0.86% a trade, 13 to 64 trades a day",
+        "5-minute dip scalp (RSI under 25, 2 sd under)": "-0.30% to -0.62% a trade, profit factor 0.12-0.73",
+        "VWAP reversion (1.5% under the 4-hour VWAP)": "-0.39% to -0.59% a trade",
+        "lesson": "every target, stop and hold tried lost: the moves are smaller than the 0.55% round trip. "
+                  "Use fast data to time good trades, not to trade more",
+    },
 }
 
 # Features shown per market in the overview. The rest are one tool call away.
 OVERVIEW = ("price", "spread_pct", "ret_1h_pct", "ret_24h_pct", "typical_24h_move_pct", "ema20_vs_ema50_pct",
             "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "atr14_pct", "regime",
             "zero_volume_hours_24", "setups")
+# In sprint the overview leads with the fast features (features.fast_features).
+FAST_OVERVIEW = ("price", "spread_pct", "ret_5m_pct", "ret_30m_pct", "ret_1h_pct", "ret_24h_pct",
+                 "ema9_vs_ema21_5m_pct", "rsi14_5m", "bb_z_5m", "atr14_5m_pct", "vol_ratio_5m", "vwap_4h_dev_pct",
+                 "range_1h_pct", "pos_in_1h_range", "ema20_vs_ema50_pct", "regime")
 
 
 class State(TypedDict, total=False):
@@ -142,6 +158,7 @@ class State(TypedDict, total=False):
     theses: dict
     fail_streak: int  # failed analyst cycles in a row (kept between cycles)
     lean: bool  # safe mode or over the token budget, decided at the start of the cycle
+    profile: dict  # the pace for the time left (horizon.py)
     token_day: int  # the UTC day of tokens_today
     tokens_today: int
     recent: Annotated[list, operator.add]  # short-term memory: one line per cycle, kept by the checkpointer
@@ -200,8 +217,12 @@ sell. Nothing is bought unless you ask for it. Code only keeps the hard limits i
 from your risk and stop. A bull and a bear analyst will argue each buy you propose, and a judge can reduce or
 reject it.
 
+Your pace follows the time left (`profile`): with under a day left you are in sprint. Then decide every 5 minutes
+on 1, 5 and 15-minute data, and plan holds of minutes to a few hours; a buy that can't work before the end is a
+bad buy. With days or weeks left, slow down and use 1-hour and 4-hour data.
+
 Work like a professional:
-1. Read the skill trader-core. Call get_portfolio. Look at the market overview you were given.
+1. Read the skill trader-core and the skill named in `profile`. Call get_portfolio. Read the market overview.
 2. Find opportunities: get_regime and get_market on the markets that matter, list_markets for the rest.
 3. Check evidence before you act: get_evidence (what worked here, by horizon and exit), get_orderbook (live book
    and trades from the Wallex MCP server), get_candles or get_hourly_closes (shape), recall_lessons.
@@ -221,7 +242,7 @@ FORMAT = """{
             "risk_pct": <0.25 to 3: % of equity lost if the stop is hit>,
             "stop_pct": <1 to 15: stop distance under the entry, %>,
             "target_pct": <null, or the gain % to sell at>,
-            "max_hours": <the longest hold, 1 to 72>,
+            "max_hours": <the longest hold in hours, 0.1 up to the profile's max_hold_hours>,
             "exit_on_trend_turn": true | false,
             "order": "maker" | "taker",
             "conviction": <0 to 1>, "reason": "<at most 300 characters>", "cited": ["<feature names>"],
@@ -265,6 +286,7 @@ def build_graph(b: Brain, checkpointer=None):
         tokens = state.get("tokens_today", 0) if state.get("token_day") == day else 0
         theses = {s: (b.store.get(("theses",), s) or _Empty).value for s in positions}
         return {"cycle": state.get("cycle", 0) + 1, "now": now, "hours_left": hours_left, "table": table,
+                "profile": profile(hours_left).as_dict(),
                 "token_day": day, "tokens_today": tokens, "bull": {}, "bear": {}, "micro": {},
                 "lean": state.get("fail_streak", 0) >= SAFE_AFTER or tokens >= TOKEN_BUDGET,
                 "theses": {s: t for s, t in theses.items() if t}, "positions": positions, "closed": [],
@@ -292,8 +314,10 @@ def build_graph(b: Brain, checkpointer=None):
         tools = analyst_tools(b, state, extra, micro)
         prompt = ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT)
         facts = {
-            "hours_left": state["hours_left"], "account_tmn": state["account"], "positions": state["positions"],
-            "envelope": asdict(b.env), "markets_overview": overview_table(table),
+            "hours_left": state["hours_left"], "profile": state["profile"], "account_tmn": state["account"],
+            "positions": state["positions"], "envelope": asdict(b.env),
+            "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
+                                               else OVERVIEW),
             "setup_meanings": {k: v.meaning for k, v in SETUPS.items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
@@ -358,7 +382,8 @@ def build_graph(b: Brain, checkpointer=None):
         return {"review": review, "tokens_today": state.get("tokens_today", 0) + spent}
 
     def gate(state: State) -> State:
-        decisions, problems = check_plan(state, b.env)
+        decisions, problems = check_plan(state, b.env, Profile(**state["profile"]) if state.get("profile")
+                                         else None)
         return {"decisions": decisions, "problems": state["problems"] + problems}
 
     def act(state: State) -> State:
@@ -385,6 +410,7 @@ def build_graph(b: Brain, checkpointer=None):
                 d["verdict"] = {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
                 if v.tmn:
                     exits = {k: d[k] for k in ("target_pct", "max_hours", "trend_exit", "order")}
+                    exits["fill_minutes"] = (state.get("profile") or {}).get("fill_minutes", 60)
                     result = b.executor.buy(d["symbol"], d["strategy"], f, v, now, exits)
                     orders.append({"symbol": d["symbol"], "action": "BUY", "tmn": v.tmn, **exits, **result})
                     if result.get("placed"):  # the trader sees its own thesis while it holds the position
@@ -562,8 +588,8 @@ def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
 
     @tool
     def get_evidence(topic: str = "all") -> dict:
-        """What our tests on the past found. Topics: setups_12h, rule_sets_by_horizon, exits, time_of_day,
-        how_big_12h, ai_record, costs, or all."""
+        """What our tests on the past found. Topics: short_term, setups_12h, rule_sets_by_horizon, exits,
+        time_of_day, how_big_12h, ai_record, costs, or all."""
         return EVIDENCE if topic not in EVIDENCE else {topic: EVIDENCE[topic]}
 
     @tool
@@ -619,7 +645,8 @@ def recall(store, filter_: dict | None, limit: int) -> list:
     return [{k: i.value.get(k) for k in ("symbol", "setup", "net_pct", "lesson")} for i in items]
 
 
-def check_plan(state: State, env: Envelope = ENVELOPE) -> tuple[list[dict], list[str]]:
+def check_plan(state: State, env: Envelope = ENVELOPE, pace: Profile | None = None
+               ) -> tuple[list[dict], list[str]]:
     """The trader's plan, after the judge, as decisions. Code only fills gaps and keeps values in the envelope."""
     table, plan, problems = state["table"], state.get("plan") or {}, []
     if not plan:  # the AI failed: fail closed, no new buys. Held positions keep their exit plans and stops.
@@ -642,7 +669,8 @@ def check_plan(state: State, env: Envelope = ENVELOPE) -> tuple[list[dict], list
         d = {"symbol": s, "strategy": str(x.get("strategy") or "agent")[:40], "risk_pct": risk,
              "stop_pct": clamp(x.get("stop_pct"), env.min_stop_pct, env.max_stop_pct, 4.0),
              "target_pct": clamp(x.get("target_pct"), 0.5, 100, 0) if x.get("target_pct") else 0.0,
-             "max_hours": clamp(x.get("max_hours"), 1, env.max_hours, 12),
+             "max_hours": clamp(x.get("max_hours"), 0.1, min(env.max_hours, pace.max_hold_hours if pace else
+                                                              env.max_hours), 12),
              "trend_exit": bool(x.get("exit_on_trend_turn")),
              "order": "taker" if x.get("order") == "taker" else "maker",
              "conviction": clamp(x.get("conviction"), 0, 1, 0.5), "reason": str(x.get("reason", ""))[:400],

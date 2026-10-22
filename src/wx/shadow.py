@@ -31,6 +31,7 @@ class Order:
     max_hours: float = 0.0
     trend_exit: bool = False
     orders: str = "limit"  # "limit" (maker, at the bid) or "taker"
+    fill_minutes: int = 60  # how long a limit buy waits
     entry_t: int | None = None
     entry: float | None = None
     exit_t: int | None = None
@@ -85,11 +86,12 @@ class Book:
 
             f = {"price": o.price, "spread_pct": o.spread_pct}
             planned = o.max_hours or o.trend_exit or o.target_pct
-            rule = exit_rule(o.max_hours, o.trend_exit) if planned else None
+            rule = exit_rule(0, o.trend_exit) if planned else None  # the time limit is checked to the minute
             f = {**f, "round_trip_cost_pct": 2 * TAKER_FEE_PCT + o.spread_pct}  # what a taker round trip costs
-            done = trade(h, o.setup, o.t, f, o.stop_pct, o.orders, features_at, now, o.target_pct, rule)
+            done = trade(h, o.setup, o.t, f, o.stop_pct, o.orders, features_at, now, o.target_pct, rule,
+                         o.fill_minutes * 60, int(o.max_hours * 3600) if o.max_hours else None)
             if done is None:
-                if now >= o.t + FILL_WINDOW:
+                if now >= o.t + o.fill_minutes * 60:
                     o.status = "cancelled"
                     self.cash += o.tmn
                     append_log(log, {"t": now, "event": "cancelled", **asdict(o)})
@@ -117,7 +119,8 @@ class Book:
         order = Order(symbol, setup, verdict.tmn, now, features["price"], features["spread_pct"], verdict.stop_pct,
                       target_pct=float(exits.get("target_pct") or 0), max_hours=float(exits.get("max_hours") or 0),
                       trend_exit=bool(exits.get("trend_exit")),
-                      orders="taker" if exits.get("order") == "taker" else "limit")
+                      orders="taker" if exits.get("order") == "taker" else "limit",
+                      fill_minutes=int(exits.get("fill_minutes") or FILL_WINDOW // 60))
         self.orders.append(order)
         self.cash -= verdict.tmn
         append_log(log, {"t": now, "event": "placed", "rule": verdict.rule, **asdict(order)})

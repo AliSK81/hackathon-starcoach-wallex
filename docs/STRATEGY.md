@@ -89,6 +89,22 @@ positions keep their stops and exit plans. After 3 failed cycles in a row, or ov
 debate and the judge are skipped. Every AI call and answer is saved, so a past cycle can be re-run exactly
 (`WX_LLM_REPLAY=1`). The model is set in `.env` (`LLM_BASE_URL`, `LLM_MODEL`); we use the hackathon gateway.
 
+## The pace follows the trading time
+
+The time left until trading ends sets the pace (D45, `horizon.py`):
+
+| Time left | Profile | Decisions | Data read first | Holds | Limit buys wait |
+|---|---|---|---|---|---|
+| under a day | sprint | every 5 minutes | 1, 5, 15-minute candles, the live book | minutes to 6 hours | 10 minutes |
+| up to a week | short | every 15 minutes | 15-minute and 1-hour candles | hours to 2 days | 30 minutes |
+| longer, or no end | swing | every 30 minutes | 1-hour and 4-hour candles | a day to a week | 60 minutes |
+
+The profile moves to sprint by itself as the end comes closer. In sprint the trader reads ten fast features (5 and
+30-minute returns, the 5-minute EMA 9/21, RSI and z-score, 5-minute ATR and volume, the 4-hour VWAP, the last
+hour's range and position) and the sprint playbook. Our tests on 1-minute data showed that standard fast
+strategies lose 0.3% to 0.95% a trade on Wallex after costs (F62), so the playbook uses fast data to time good
+trades and exit failing ones quickly, not to trade more.
+
 ## How trades are decided
 
 The trader decides each trade (D43). The skills give it the playbooks:
