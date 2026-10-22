@@ -8,6 +8,6 @@ Plan:
 - [x] Tests with a fake Wallex (`tests/test_live.py`).
 - [x] A Wallex key in `.env` (5,000,000 TMN, nothing else). Whether it can trade shows in `wx order-test`.
 - [x] The kill switch knows every allowed TMN market. Live decisions have their own log (D46).
-- [ ] `wx order-test`: one real order that can't fill, read back and cancelled. Write what we learn in DECISIONS.md.
+- [x] A real order read back from Wallex; what we learned is in DECISIONS.md (F68).
 - [x] Tag the version that trades: `live-1`.
-- [ ] Start `wx agent --live` under the supervisor (Phase 5).
+- [x] Start `wx agent --live` under the supervisor (Phase 5).

@@ -132,6 +132,7 @@ Facts checked with live Wallex data, our own key, or a real order. Research note
 | F65 | Where the AI tokens went: the last 150 saved calls (shadow, sprint). The trader's tool loop made 137 of them and about 93% of the input; each call re-sends the conversation so far, 7,800 tokens on average. Bull, bear, judge and lessons only run when a buy is proposed. In 25 of 26 cycles the trader's first call only read fixed text (skills trader-core and sprint-trading, the portfolio, the evidence). The gateway reported 0 of 1.5 million input tokens as cached. 26 real cycles averaged 58,951 input and 4,004 output tokens; 70% of the output was reasoning. Priced at GPT-5 Mini rates ($0.2875 in, $2.30 out, $0.0288 cached per million): about $7.53 a day at 288 cycles. With D47 and a gateway that caches: about $3.53; with no caching at all: about $7.28. The trader's system prompt is now about 3,500 tokens (over the 1,024 a prompt needs for caching); bull and judge are just under it. | measured | 2026-10-22 | `data/brain/llm_cache.sqlite` |
 | F66 | Check after D47, on `live-3` with `mohaymen/qwen3.8-27b`: `wx backtest` (no AI) ran with no errors; results within about 2 points of the saved run (more candles since, and the F55 fix). `wx agent-replay --moments 5` (the whole graph, real AI): no failed AI cycle, every plan in the right shape, 8.2 tool calls a moment (10.4 in F58). The trader's first step went straight to analysis (regime, order book, evidence); it no longer fetched the playbooks or the portfolio. 26 AI calls: trader 20 (4 a moment, 26,600 input tokens a moment), bull and bear 4, judge 2; largest prompt 8,676 of 32,768. The gateway reported 0 cached tokens, so on it the saving is only the fewer calls. 2 filled buys at -0.61% each, account -0.04% a moment; holding every market -0.18%. 5 moments is too few to judge the trading itself. | works | 2026-10-22 | `results/replay_agent_v3.jsonl` |
 | F67 | Holding USDT for 20 hours (buy USDTTMN, sell 20 hours later, maker both ways, 0.51% round trip), every start hour, 120 days of hourly closes | Any time: -0.16% on average, up in 41%, worst -4.18%, best +3.77%. Last 30 days -0.01%. Starting 18:00-20:00 UTC: -0.19%. After USDTTMN rose over 1.5% in 24 hours: 1st half -0.03% (45% up, about 23 separate episodes), 2nd half +0.46% (66% up, about 30). The momentum works in one half only. | 2026-10-22 | scratch test on `data/candles/USDTTMN_1h.csv` |
+| F68 | The first real order, placed by the agent on `live-5` (D48): LIMIT BUY 1.48 USDTTMN at 271,895 (the best bid; ask 271,898), client id `wx_b_1792695180_cc5217`, 2026-10-22 18:53:01 UTC. Wallex answered `status` NEW, `active` true, and locked exactly price x quantity (402,404.6 TMN); no fee is locked up front. It filled in one fill at 18:59:23 UTC, as a maker: `status` FILLED, `active` false, `executedPercent` 100. **The buy fee is taken in the coin**: 0.0037 USDT (`feeAsset` USDT, `feeCoefficient` 0.0025), so we hold 1.4763 USDT for 402,404.6 TMN. Each fill also names `makerFeeCoefficient` 0.0025 and `takerFeeCoefficient` 0.0030. Balances after: TMN 4,597,595, USDT 1.4763, the same as the live book. | works | 2026-10-22 | `data/live/orders.jsonl`, `GET /v1/account/orders/{client_id}` |
 
 #### Market rules for the default markets (F10)
 
@@ -149,11 +150,11 @@ Rules can change. Code reads them from Wallex at start. It does not use this tab
 ### Still unknown
 
 Check each of these when a change needs it:
-- Is the fee on a BUY taken in the coin or in Toman?
+- ~~Is the fee on a BUY taken in the coin or in Toman?~~ In the coin (F68).
 - F7 says decimals. Confirm it with the first real order.
 - What does `isMarketTypeEnable` = false mean (F9)? Can we send MARKET orders on SOLTMN, XRPTMN and PEPETMN?
 - How to send a MARKET order. Is a price required? Can we say "spend X Toman"?
-- Order status values and error codes (no money, too small, bad precision, duplicate ID, too many requests).
+- Order status values and error codes (no money, too small, bad precision, duplicate ID, too many requests). Seen so far: NEW, FILLED (F68).
 - The longest allowed `client_id`, and which characters it may use.
 - Request limits when using our key, for the API and for the MCP server.
 - Does a trading key need a fixed IP address?

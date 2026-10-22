@@ -10,9 +10,9 @@
 
 Update this after every change.
 
-- **Current phase:** 4 ends with `wx order-test`, then 5 (a 24-hour live run, D46). Phases 2 and 3 done. Phases 6 and 7 in progress.
-- **Live trading:** running since 2026-10-22 17:56 UTC, until 2026-10-23 18:00 UTC. No trade yet: the AI key refuses the model (F64).
-- **Version trading live:** `live-2`
+- **Current phase:** 5, live trading until 2026-10-23 14:45 UTC. Phases 2, 3 and 4 done. Phases 6 and 7 in progress.
+- **Live trading:** running since 2026-10-22 18:46 UTC on GPT-5 Mini (boxapi). First real fill 18:59 UTC (F68).
+- **Version trading live:** `live-5`
 
 ### What we need from the team
 

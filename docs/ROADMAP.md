@@ -41,8 +41,8 @@ Build a bot that trades on Wallex by itself. It must:
 | 1 | Read from Wallex | before live | done | [phase-1-read.md](phases/phase-1-read.md) |
 | 2 | AI decides, no money | before live | done | [phase-2-decide.md](phases/phase-2-decide.md) |
 | 3 | Risk check and fake orders | before live | done | [phase-3-risk-shadow.md](phases/phase-3-risk-shadow.md) |
-| 4 | First real orders | before live | in progress | [phase-4-real-orders.md](phases/phase-4-real-orders.md) |
-| 5 | Live trading | live | planned | [phase-5-live.md](phases/phase-5-live.md) |
+| 4 | First real orders | before live | done | [phase-4-real-orders.md](phases/phase-4-real-orders.md) |
+| 5 | Live trading | live | in progress | [phase-5-live.md](phases/phase-5-live.md) |
 | 6 | Backtest | during live | in progress | [phase-6-backtest.md](phases/phase-6-backtest.md) |
 | 7 | Docs for judges | during live | in progress | [phase-7-docs.md](phases/phase-7-docs.md) |
 
