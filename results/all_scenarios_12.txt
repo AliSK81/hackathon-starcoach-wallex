@@ -1,28 +1,28 @@
 Market set 12: PUMPTMN ARBTMN BNBTMN DOGETMN TRXTMN STMN APETMN SUITMN LTCTMN UNITMN ADATMN SANDTMN. 89 days of hours, 25536 rows.
 
 === agent (setups + agent limits)
-whole history, limit: return  +18.52%  max drawdown 12.16%  trades 158 (1.8/day)  win 44%  avg trade +2.54%
-whole history, taker: return  +21.16%  max drawdown 10.98%  trades 206 (2.3/day)  win 44%  avg trade +2.10%
-1st half, limit    : return  +11.98%  max drawdown  6.60%  trades 57
-2nd half, limit    : return   +4.51%  max drawdown 12.13%  trades 105
-72 h windows   : avg  +0.26%  up  48%  flat   0%  worst  -5.09%  best  +7.41%  (n=86)
-24 h windows   : avg  -0.04%  up  44%  flat   6%  worst  -4.74%  best  +5.71%  (n=351)
-12 h windows   : avg  -0.08%  up  36%  flat  18%  worst  -4.38%  best  +3.43%  (n=353)
+whole history, limit: return  +18.56%  max drawdown 12.06%  trades 149 (1.7/day)  win 42%  avg trade +2.46%
+whole history, taker: return  +19.36%  max drawdown 10.95%  trades 206 (2.3/day)  win 43%  avg trade +1.92%
+1st half, limit    : return  +13.16%  max drawdown  5.62%  trades 53
+2nd half, limit    : return   +3.64%  max drawdown 12.06%  trades 100
+72 h windows   : avg  +0.29%  up  49%  flat   0%  worst  -5.53%  best  +7.41%  (n=86)
+24 h windows   : avg  -0.03%  up  44%  flat   6%  worst  -4.65%  best  +5.71%  (n=351)
+12 h windows   : avg  -0.07%  up  35%  flat  18%  worst  -4.30%  best  +3.43%  (n=353)
 
 === agent setups, old limits
-whole history, limit: return  +24.34%  max drawdown 14.69%  trades 216 (2.4/day)  win 40%  avg trade +2.22%
-whole history, taker: return  +26.41%  max drawdown 14.33%  trades 258 (2.9/day)  win 39%  avg trade +1.77%
-1st half, limit    : return  +13.13%  max drawdown 14.69%  trades 113
-2nd half, limit    : return   +8.08%  max drawdown 11.26%  trades 104
-72 h windows   : avg  +0.05%  up  42%  flat   0%  worst  -6.84%  best +14.02%  (n=86)
-24 h windows   : avg  -0.18%  up  35%  flat   2%  worst  -4.95%  best  +6.15%  (n=351)
-12 h windows   : avg  -0.18%  up  31%  flat  10%  worst  -4.61%  best  +3.84%  (n=353)
+whole history, limit: return  +23.87%  max drawdown 14.24%  trades 212 (2.4/day)  win 39%  avg trade +2.14%
+whole history, taker: return  +24.38%  max drawdown 14.06%  trades 258 (2.9/day)  win 37%  avg trade +1.61%
+1st half, limit    : return  +13.73%  max drawdown 14.24%  trades 111
+2nd half, limit    : return   +6.92%  max drawdown 11.21%  trades 102
+72 h windows   : avg  +0.10%  up  43%  flat   0%  worst  -6.84%  best +14.02%  (n=86)
+24 h windows   : avg  -0.17%  up  35%  flat   2%  worst  -4.95%  best  +6.15%  (n=351)
+12 h windows   : avg  -0.17%  up  31%  flat  10%  worst  -4.61%  best  +3.84%  (n=353)
 
 === old trend rule
-whole history, limit: return  +34.46%  max drawdown 13.11%  trades 194 (2.2/day)  win 32%  avg trade +1.99%
-whole history, taker: return  +48.75%  max drawdown 17.94%  trades 203 (2.3/day)  win 33%  avg trade +2.43%
+whole history, limit: return  +31.85%  max drawdown 13.11%  trades 194 (2.2/day)  win 31%  avg trade +1.88%
+whole history, taker: return  +46.04%  max drawdown 17.94%  trades 203 (2.3/day)  win 32%  avg trade +2.35%
 1st half, limit    : return  +16.86%  max drawdown 11.16%  trades 102
-2nd half, limit    : return   +9.63%  max drawdown 13.02%  trades 96
+2nd half, limit    : return   +7.43%  max drawdown 13.02%  trades 96
 72 h windows   : avg  +0.20%  up  41%  flat   0%  worst  -6.41%  best +16.58%  (n=86)
 24 h windows   : avg  -0.21%  up  35%  flat   0%  worst  -4.64%  best  +8.25%  (n=351)
 12 h windows   : avg  -0.25%  up  34%  flat   1%  worst  -4.32%  best  +6.55%  (n=353)

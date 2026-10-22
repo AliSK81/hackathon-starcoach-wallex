@@ -1,21 +1,21 @@
 
 === market set 6
-defensive (current)  89d   +3.0% dd  4.6% | 12h avg -0.04 up 14% >=5% 0% worst -1.4 best +2.1 | 24h avg -0.04 up 25% >=5% 0% worst -1.4 best +2.3 | 72h avg -0.03 up 48% >=5% 0% worst -1.9 best +2.6
-normal               89d  +15.1% dd  6.0% | 12h avg -0.07 up 23% >=5% 0% worst -2.3 best +2.2 | 24h avg -0.04 up 35% >=5% 0% worst -2.5 best +4.8 | 72h avg +0.14 up 45% >=5% 3% worst -2.8 best +10.7
-active               89d  +24.5% dd  8.8% | 12h avg -0.12 up 33% >=5% 0% worst -2.8 best +3.0 | 24h avg +0.01 up 42% >=5% 1% worst -3.9 best +5.9 | 72h avg +0.47 up 41% >=5% 5% worst -4.6 best +16.8
-aggressive           89d  +42.5% dd 15.4% | 12h avg -0.20 up 36% >=5% 0% worst -4.2 best +4.5 | 24h avg -0.03 up 43% >=5% 2% worst -6.4 best +9.7 | 72h avg +0.73 up 46% >=5% 15% worst -6.8 best +19.0
-max (35%/coin, 90%)  89d  +49.6% dd 17.1% | 12h avg -0.25 up 35% >=5% 0% worst -6.2 best +4.4 | 24h avg -0.06 up 45% >=5% 3% worst -7.4 best +10.6 | 72h avg +0.68 up 45% >=5% 15% worst -10.7 best +21.2
+defensive (current)  89d   +2.8% dd  4.5% | 12h avg -0.04 up 14% >=5% 0% worst -1.4 best +2.1 | 24h avg -0.05 up 25% >=5% 0% worst -1.4 best +2.3 | 72h avg -0.03 up 47% >=5% 0% worst -1.8 best +2.6
+normal               89d  +14.7% dd  6.0% | 12h avg -0.06 up 23% >=5% 0% worst -2.3 best +2.2 | 24h avg -0.04 up 35% >=5% 0% worst -2.5 best +4.8 | 72h avg +0.13 up 45% >=5% 3% worst -2.9 best +10.7
+active               89d  +25.2% dd  9.0% | 12h avg -0.13 up 34% >=5% 0% worst -2.8 best +3.0 | 24h avg -0.02 up 42% >=5% 0% worst -3.9 best +5.8 | 72h avg +0.40 up 44% >=5% 5% worst -4.6 best +10.3
+aggressive           89d  +42.5% dd 15.3% | 12h avg -0.19 up 36% >=5% 0% worst -4.2 best +4.5 | 24h avg -0.01 up 44% >=5% 2% worst -6.4 best +9.7 | 72h avg +0.74 up 46% >=5% 15% worst -6.8 best +19.0
+max (35%/coin, 90%)  89d  +50.0% dd 16.6% | 12h avg -0.24 up 36% >=5% 0% worst -6.2 best +4.4 | 24h avg -0.04 up 46% >=5% 3% worst -7.4 best +10.6 | 72h avg +0.69 up 45% >=5% 15% worst -9.9 best +21.2
 
 === market set 12
-defensive (current)  89d  +18.5% dd 12.2% | 12h avg -0.08 up 36% >=5% 0% worst -4.4 best +3.4 | 24h avg -0.04 up 44% >=5% 0% worst -4.7 best +5.7 | 72h avg +0.26 up 48% >=5% 3% worst -5.1 best +7.4
-normal               89d  +18.2% dd 13.7% | 12h avg -0.15 up 32% >=5% 0% worst -4.2 best +3.4 | 24h avg -0.13 up 36% >=5% 1% worst -4.5 best +5.7 | 72h avg +0.18 up 44% >=5% 6% worst -5.3 best +13.9
-active               89d  +31.1% dd 18.1% | 12h avg -0.22 up 33% >=5% 0% worst -4.1 best +5.5 | 24h avg -0.14 up 38% >=5% 2% worst -5.4 best +7.7 | 72h avg +0.19 up 42% >=5% 10% worst -7.5 best +14.4
-aggressive           89d  +40.0% dd 23.8% | 12h avg -0.25 up 40% >=5% 2% worst -6.2 best +9.6 | 24h avg -0.06 up 42% >=5% 9% worst -6.3 best +16.9 | 72h avg +0.65 up 42% >=5% 23% worst -9.5 best +20.5
-max (35%/coin, 90%)  89d  +53.8% dd 19.3% | 12h avg -0.21 up 41% >=5% 3% worst -9.0 best +12.3 | 24h avg +0.07 up 44% >=5% 13% worst -9.8 best +20.3 | 72h avg +0.74 up 38% >=5% 24% worst -14.3 best +29.2
+defensive (current)  89d  +18.6% dd 12.1% | 12h avg -0.07 up 35% >=5% 0% worst -4.3 best +3.4 | 24h avg -0.03 up 44% >=5% 0% worst -4.7 best +5.7 | 72h avg +0.29 up 49% >=5% 3% worst -5.5 best +7.4
+normal               89d  +20.4% dd 12.7% | 12h avg -0.14 up 32% >=5% 0% worst -4.2 best +3.4 | 24h avg -0.12 up 36% >=5% 1% worst -4.5 best +5.7 | 72h avg +0.21 up 47% >=5% 6% worst -5.3 best +13.9
+active               89d  +38.8% dd 15.5% | 12h avg -0.25 up 31% >=5% 0% worst -5.2 best +5.7 | 24h avg -0.18 up 36% >=5% 2% worst -5.7 best +6.9 | 72h avg +0.28 up 41% >=5% 14% worst -7.0 best +13.9
+aggressive           89d  +42.6% dd 19.4% | 12h avg -0.28 up 39% >=5% 2% worst -6.2 best +7.5 | 24h avg -0.14 up 42% >=5% 6% worst -6.3 best +13.4 | 72h avg +0.38 up 42% >=5% 20% worst -9.5 best +20.5
+max (35%/coin, 90%)  89d  +50.5% dd 23.3% | 12h avg -0.22 up 40% >=5% 3% worst -9.0 best +12.3 | 24h avg +0.04 up 44% >=5% 11% worst -10.4 best +17.5 | 72h avg +0.98 up 42% >=5% 26% worst -12.4 best +29.2
 
 === market set usdt
-defensive (current)  89d   -0.2% dd  6.9% | 12h avg -0.02 up 9% >=5% 0% worst -1.5 best +1.5 | 24h avg -0.02 up 15% >=5% 0% worst -1.8 best +2.4 | 72h avg -0.02 up 17% >=5% 0% worst -1.5 best +2.5
-normal               89d  +13.4% dd  8.6% | 12h avg -0.07 up 22% >=5% 0% worst -2.3 best +2.8 | 24h avg -0.04 up 30% >=5% 1% worst -2.7 best +7.5 | 72h avg +0.18 up 35% >=5% 5% worst -3.1 best +15.7
-active               89d   -4.2% dd 13.8% | 12h avg -0.23 up 24% >=5% 0% worst -4.3 best +5.9 | 24h avg -0.23 up 30% >=5% 2% worst -4.9 best +8.2 | 72h avg -0.35 up 26% >=5% 5% worst -4.1 best +14.2
-aggressive           89d   -5.4% dd 21.7% | 12h avg -0.36 up 24% >=5% 1% worst -4.2 best +8.7 | 24h avg -0.33 up 30% >=5% 4% worst -6.5 best +11.9 | 72h avg -0.18 up 26% >=5% 12% worst -6.3 best +20.2
-max (35%/coin, 90%)  89d   +2.0% dd 23.0% | 12h avg -0.41 up 24% >=5% 1% worst -5.8 best +9.5 | 24h avg -0.37 up 32% >=5% 4% worst -7.7 best +19.4 | 72h avg -0.15 up 27% >=5% 12% worst -6.9 best +22.6
+defensive (current)  89d   -0.5% dd  7.2% | 12h avg -0.02 up 9% >=5% 0% worst -1.5 best +1.3 | 24h avg -0.02 up 15% >=5% 0% worst -1.8 best +2.4 | 72h avg -0.03 up 17% >=5% 0% worst -1.5 best +2.5
+normal               89d  +11.3% dd  8.8% | 12h avg -0.08 up 22% >=5% 0% worst -2.3 best +2.8 | 24h avg -0.05 up 30% >=5% 1% worst -2.7 best +7.5 | 72h avg +0.17 up 33% >=5% 5% worst -3.1 best +15.7
+active               89d   -4.1% dd 15.6% | 12h avg -0.23 up 22% >=5% 0% worst -2.9 best +5.9 | 24h avg -0.24 up 29% >=5% 1% worst -3.3 best +8.5 | 72h avg -0.31 up 26% >=5% 6% worst -4.0 best +15.7
+aggressive           89d   -4.4% dd 20.8% | 12h avg -0.37 up 23% >=5% 1% worst -4.2 best +8.7 | 24h avg -0.35 up 29% >=5% 4% worst -6.5 best +11.9 | 72h avg -0.50 up 24% >=5% 10% worst -5.9 best +20.2
+max (35%/coin, 90%)  89d   -4.1% dd 23.8% | 12h avg -0.42 up 23% >=5% 1% worst -5.8 best +9.5 | 24h avg -0.42 up 30% >=5% 4% worst -7.7 best +13.2 | 72h avg -0.47 up 24% >=5% 10% worst -6.9 best +22.4

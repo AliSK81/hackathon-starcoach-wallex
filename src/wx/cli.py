@@ -241,18 +241,29 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
     from wx.runner import make_brain, open_memory, parse_end, run
     if missing_ai_settings(settings):
         return 1
-    markets = pick_markets(symbols)
-    if markets is None:
-        return 1
+    universe = not symbols  # no markets named: every liquid allowed TMN market, picked again each cycle
+    if universe:
+        from wx.universe import liquid, tradable_tmn
+        try:
+            markets = tradable_tmn()
+        except WallexError as error:
+            print(f"Could not read markets: {error}")
+            return 1
+        print(f"{len(markets)} allowed TMN markets; {len(liquid(markets))} liquid now (>= 5 B TMN a day).")
+    else:
+        markets = pick_markets(symbols)
+        if markets is None:
+            return 1
     end = parse_end(end_at)
     executor = live_executor(markets, settings, end) if live else ShadowExecutor(DATA_DIR)
     if executor is None:
         return 1
     name = "live" if live else "shadow"
     saver, store = open_memory(DATA_DIR, name)
-    brain = make_brain(markets, settings, DATA_DIR, executor, end, store, officer)
+    brain = make_brain(markets, settings, DATA_DIR, executor, end, store, officer, universe=universe)
     ends = datetime.fromtimestamp(end, UTC).strftime("%Y-%m-%d %H:%M UTC") if end else "never"
-    print(f"Agent on {' '.join(markets)}, every {interval} s, {name.upper()} orders, trading ends {ends}. "
+    where = "every liquid allowed TMN market" if universe else " ".join(markets)
+    print(f"Agent on {where}, every {interval} s, {name.upper()} orders, trading ends {ends}. "
           f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
     return run(brain, DATA_DIR, name, interval, cycles, saver)
 

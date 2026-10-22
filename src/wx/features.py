@@ -12,7 +12,7 @@ from pathlib import Path
 from statistics import median
 
 from wx import indicators as ind
-from wx.candles import KEEP_DAYS, SIZES, candle_path, load_candles, update_candles
+from wx.candles import SIZES, candle_path, load_candles, update_candles
 from wx.setups import active
 from wx.wallex import fetch_best_prices
 
@@ -23,6 +23,9 @@ MINUTE = 60
 # The typical 24-hour move needs 30 days plus one day: 744 hours.
 MIN_HOURS = 750
 HOURS_USED = 1000
+# Live features need this much history: 1000 hours, and 5000 minutes. A new market downloads only this
+# (seconds), not the 120 days `wx candles` keeps for tests on the past.
+LIVE_DAYS = {"1m": 4, "1h": 43}
 
 # Name -> what it means. The AI will see these words. Order is the print order.
 FEATURES = {
@@ -183,7 +186,7 @@ def add_context(table: dict[str, dict]) -> dict[str, dict]:
 def market_features(symbol: str, data_dir: Path, taker_fee: float | None = None, now: int | None = None) -> dict:
     """Bring the saved candles up to date, read the live book, and build the features."""
     for size in SIZES:
-        update_candles(symbol, size, data_dir, KEEP_DAYS)
+        update_candles(symbol, size, data_dir, LIVE_DAYS[size])
     bid, ask = fetch_best_prices(symbol)
     now = now or int(time.time())
     hours = closed_bars(load_candles(candle_path(data_dir, symbol, "1h")), HOUR, now)

@@ -1,21 +1,21 @@
 Market set usdt: BTCUSDT ETHUSDT SOLUSDT XRPUSDT PEPEUSDT DOGEUSDT. 89 days of hours, 12768 rows.
 
 === agent (setups + agent limits)
-whole history, limit: return   -0.25%  max drawdown  6.94%  trades 43 (0.5/day)  win 40%  avg trade +0.33%
-whole history, taker: return   +1.59%  max drawdown  8.10%  trades 53 (0.6/day)  win 45%  avg trade +0.28%
+whole history, limit: return   -0.52%  max drawdown  7.19%  trades 42 (0.5/day)  win 38%  avg trade +0.26%
+whole history, taker: return   +1.34%  max drawdown  7.66%  trades 50 (0.6/day)  win 44%  avg trade +0.22%
 1st half, limit    : return   -0.67%  max drawdown  0.55%  trades 2
-2nd half, limit    : return   +0.04%  max drawdown  6.94%  trades 42
-72 h windows   : avg  -0.02%  up  17%  flat  47%  worst  -1.52%  best  +2.48%  (n=86)
+2nd half, limit    : return   -0.23%  max drawdown  7.19%  trades 41
+72 h windows   : avg  -0.03%  up  17%  flat  47%  worst  -1.52%  best  +2.48%  (n=86)
 24 h windows   : avg  -0.02%  up  15%  flat  63%  worst  -1.78%  best  +2.39%  (n=351)
-12 h windows   : avg  -0.02%  up   9%  flat  74%  worst  -1.46%  best  +1.48%  (n=353)
+12 h windows   : avg  -0.02%  up   9%  flat  74%  worst  -1.46%  best  +1.33%  (n=353)
 
 === agent setups, old limits
-whole history, limit: return   +3.77%  max drawdown 10.88%  trades 132 (1.5/day)  win 39%  avg trade +0.79%
-whole history, taker: return   -7.41%  max drawdown 17.78%  trades 179 (2.0/day)  win 32%  avg trade +0.24%
-1st half, limit    : return   +7.11%  max drawdown  8.11%  trades 61
-2nd half, limit    : return   -3.18%  max drawdown 10.88%  trades 73
-72 h windows   : avg  +0.08%  up  33%  flat   1%  worst  -3.33%  best +15.60%  (n=86)
-24 h windows   : avg  -0.06%  up  30%  flat  15%  worst  -2.86%  best  +7.93%  (n=351)
+whole history, limit: return   +2.38%  max drawdown 10.96%  trades 131 (1.5/day)  win 37%  avg trade +0.74%
+whole history, taker: return   -7.28%  max drawdown 17.52%  trades 178 (2.0/day)  win 31%  avg trade +0.21%
+1st half, limit    : return   +6.42%  max drawdown  7.87%  trades 59
+2nd half, limit    : return   -3.79%  max drawdown 10.77%  trades 72
+72 h windows   : avg  +0.07%  up  29%  flat   1%  worst  -3.33%  best +15.60%  (n=86)
+24 h windows   : avg  -0.07%  up  29%  flat  15%  worst  -2.86%  best  +7.93%  (n=351)
 12 h windows   : avg  -0.10%  up  22%  flat  35%  worst  -2.50%  best  +3.47%  (n=353)
 
 === old trend rule

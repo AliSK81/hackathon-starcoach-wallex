@@ -76,7 +76,7 @@ TAKE_PROFIT_NET_PCT = 1.0  # exit reason take_profit: the gain after a round tri
 ROUND_TRIP_PCT = 0.55  # maker in, taker out, a little spread
 OFFICER_CUT = 0.5  # a REDUCE from the risk officer halves the risk
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
-TOKEN_BUDGET = 3_000_000  # AI tokens a UTC day. Above it, no debate and no officer
+TOKEN_BUDGET = 6_000_000  # AI tokens a UTC day, about 90,000 a cycle on all liquid markets. Above: no debate
 AUTO_LESSONS = 6  # lessons put in the analyst's facts, losses first
 
 # 12-hour record of each setup on 18 markets over 120 days: fixed 12-hour hold, 4 ATR stop, net of costs (F41).
@@ -92,15 +92,17 @@ RECORD_12H = {
 # Past results of each risk mode on our 6 markets, limit orders, sold into Toman at the end of each window (F53).
 # avg and worst are % of the account; up is the share of windows that ended up. `scripts/test_risk_modes.py`.
 MODE_RECORD = {
-    "defensive": {"12h": "avg -0.04, up 14%, worst -1.4, best +2.1", "1d": "avg -0.04, up 25%, worst -1.4",
-                  "3d": "avg -0.03, up 48%, worst -1.9, best +2.6", "89d": "+3.0%, drawdown 4.6%"},
-    "normal": {"12h": "avg -0.07, up 23%, worst -2.3, best +2.2", "1d": "avg -0.04, up 35%, worst -2.5",
-               "3d": "avg +0.14, up 45%, worst -2.8, best +10.7", "89d": "+15.1%, drawdown 6.0%"},
-    "active": {"12h": "avg -0.12, up 33%, worst -2.8, best +3.0", "1d": "avg +0.01, up 42%, worst -3.9",
-               "3d": "avg +0.47, up 41%, worst -4.6, best +16.8", "89d": "+24.5%, drawdown 8.8%"},
-    "aggressive": {"12h": "avg -0.20, up 36%, worst -4.2, best +4.5", "1d": "avg -0.03, up 43%, worst -6.4",
-                   "3d": "avg +0.73, up 46%, worst -6.8, best +19.0", "89d": "+42.5%, drawdown 15.4%",
-                   "without_toman_drift_89d": "-5.4%"},
+    "defensive": {"12h": "avg -0.04, up 14%, worst -1.4, best +2.1", "1d": "avg -0.05, up 25%, worst -1.4",
+                  "3d": "avg -0.03, up 47%, worst -1.8, best +2.6", "89d": "+2.8%, drawdown 4.5%"},
+    "normal": {"12h": "avg -0.06, up 23%, worst -2.3, best +2.2", "1d": "avg -0.04, up 35%, worst -2.5",
+               "3d": "avg +0.13, up 45%, worst -2.9, best +10.7", "89d": "+14.7%, drawdown 6.0%"},
+    "active": {"12h": "avg -0.13, up 34%, worst -2.8, best +3.0", "1d": "avg -0.02, up 42%, worst -3.9",
+               "3d": "avg +0.40, up 44%, worst -4.6, best +10.3", "89d": "+25.2%, drawdown 9.0%"},
+    "aggressive": {"12h": "avg -0.19, up 36%, worst -4.2, best +4.5", "1d": "avg -0.01, up 44%, worst -6.4",
+                   "3d": "avg +0.74, up 46%, worst -6.8, best +19.0", "89d": "+42.5%, drawdown 15.3%",
+                   "without_toman_drift_89d": "-4.4%"},
+    "last_12h_2026-10-22_02-14_UTC": {"defensive": "-0.02%", "normal": "+0.20%", "active": "-0.07%",
+                                      "aggressive": "-0.62%", "hold_every_market": "-0.33%"},
 }
 
 EXITS = {

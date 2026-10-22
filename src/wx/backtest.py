@@ -26,9 +26,15 @@ Policy = Callable[[int, dict[str, dict], set[str]], list[tuple[str, str]]]
 
 
 def setups_policy(names: tuple[str, ...]) -> Policy:
-    """Buy every market where one of these setups is active, in the order the setups are named."""
+    """Buy every market where one of these setups is active, through the first one named. One buy per market,
+    as in live trading: a market with two active setups is bought once."""
     def policy(t: int, table: dict[str, dict], held: set[str]) -> list[tuple[str, str]]:
-        return [(s, name) for name in names for s, f in table.items() if name in f["setups"] and s not in held]
+        picks = {}
+        for name in names:
+            for s, f in table.items():
+                if name in f["setups"] and s not in held:
+                    picks.setdefault(s, name)
+        return sorted(picks.items(), key=lambda kv: names.index(kv[1]))
     return policy
 
 

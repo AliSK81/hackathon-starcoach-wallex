@@ -1,15 +1,15 @@
 
 === market set 6
-dips only          all  +3.11% (dd  3.9%, 65 tr) | 1st half  +1.74% (dd  1.4%, 20 tr) | 2nd half  +1.35% (dd  3.9%, 45 tr) | last 30 days  +0.91% (dd  3.9%, 33 tr) | 12h avg -0.006% worst -1.43% | 3d avg +0.082% worst -1.85%
-trend_strong only  all  -1.21% (dd  5.4%, 31 tr) | 1st half  -0.95% (dd  2.9%, 9 tr) | 2nd half  -0.26% (dd  2.8%, 22 tr) | last 30 days  -0.37% (dd  1.9%, 15 tr) | 12h avg -0.032% worst -1.32% | 3d avg -0.120% worst -1.34%
-both (current)     all  +3.09% (dd  4.6%, 88 tr) | 1st half  +0.79% (dd  2.0%, 28 tr) | 2nd half  +2.28% (dd  4.6%, 60 tr) | last 30 days  +1.32% (dd  4.6%, 45 tr) | 12h avg -0.038% worst -1.43% | 3d avg -0.026% worst -1.87%
+dips only          all  +2.86% (dd  3.3%, 58 tr) | 1st half  +1.02% (dd  1.1%, 16 tr) | 2nd half  +1.82% (dd  3.3%, 42 tr) | last 30 days  +1.38% (dd  3.3%, 30 tr) | 12h avg -0.007% worst -1.43% | 3d avg +0.074% worst -1.63%
+trend_strong only  all  -1.26% (dd  5.4%, 31 tr) | 1st half  -0.95% (dd  2.9%, 9 tr) | 2nd half  -0.31% (dd  2.8%, 22 tr) | last 30 days  -0.41% (dd  1.9%, 15 tr) | 12h avg -0.032% worst -1.32% | 3d avg -0.120% worst -1.34%
+both (current)     all  +2.79% (dd  4.5%, 81 tr) | 1st half  +0.08% (dd  2.3%, 24 tr) | 2nd half  +2.71% (dd  4.0%, 57 tr) | last 30 days  +1.74% (dd  4.0%, 42 tr) | 12h avg -0.039% worst -1.43% | 3d avg -0.034% worst -1.78%
 
 === market set 12
-dips only          all  -4.09% (dd 10.0%, 101 tr) | 1st half  -3.00% (dd  3.7%, 28 tr) | 2nd half  -1.12% (dd  7.8%, 73 tr) | last 30 days  +1.79% (dd  7.8%, 55 tr) | 12h avg -0.042% worst -4.17% | 3d avg -0.110% worst -4.37%
-trend_strong only  all +27.61% (dd  7.3%, 90 tr) | 1st half +14.23% (dd  3.9%, 35 tr) | 2nd half +10.52% (dd  7.3%, 57 tr) | last 30 days  -1.49% (dd  5.1%, 46 tr) | 12h avg -0.040% worst -2.88% | 3d avg +0.433% worst -3.82%
-both (current)     all +18.52% (dd 12.2%, 158 tr) | 1st half +11.98% (dd  6.6%, 57 tr) | 2nd half  +4.51% (dd 12.1%, 105 tr) | last 30 days  -2.82% (dd 10.1%, 80 tr) | 12h avg -0.077% worst -4.38% | 3d avg +0.262% worst -5.09%
+dips only          all  -4.15% (dd  8.9%, 87 tr) | 1st half  -1.92% (dd  2.7%, 23 tr) | 2nd half  -1.73% (dd  8.1%, 68 tr) | last 30 days  +0.11% (dd  8.1%, 53 tr) | 12h avg -0.036% worst -4.15% | 3d avg -0.089% worst -4.85%
+trend_strong only  all +26.43% (dd  7.3%, 90 tr) | 1st half +14.23% (dd  3.9%, 35 tr) | 2nd half  +9.50% (dd  7.3%, 57 tr) | last 30 days  -2.39% (dd  5.1%, 46 tr) | 12h avg -0.040% worst -2.88% | 3d avg +0.433% worst -3.82%
+both (current)     all +18.56% (dd 12.1%, 149 tr) | 1st half +13.16% (dd  5.6%, 53 tr) | 2nd half  +3.64% (dd 12.1%, 100 tr) | last 30 days  -4.79% (dd 10.0%, 78 tr) | 12h avg -0.072% worst -4.30% | 3d avg +0.286% worst -5.53%
 
 === market set usdt
-dips only          all  -1.16% (dd  2.7%, 28 tr) | 1st half  +0.00% (dd  0.0%, 0 tr) | 2nd half  -1.16% (dd  2.7%, 28 tr) | last 30 days  -0.29% (dd  2.3%, 23 tr) | 12h avg -0.005% worst -1.06% | 3d avg -0.062% worst -1.01%
+dips only          all  -1.44% (dd  2.4%, 27 tr) | 1st half  +0.00% (dd  0.0%, 0 tr) | 2nd half  -1.44% (dd  2.4%, 27 tr) | last 30 days  -0.57% (dd  2.0%, 22 tr) | 12h avg -0.007% worst -1.06% | 3d avg -0.072% worst -1.01%
 trend_strong only  all  +0.14% (dd  6.6%, 22 tr) | 1st half  -0.67% (dd  0.5%, 2 tr) | 2nd half  +0.82% (dd  6.6%, 20 tr) | last 30 days  -3.61% (dd  4.9%, 17 tr) | 12h avg -0.015% worst -1.46% | 3d avg +0.005% worst -1.10%
-both (current)     all  -0.25% (dd  6.9%, 43 tr) | 1st half  -0.67% (dd  0.5%, 2 tr) | 2nd half  +0.04% (dd  6.9%, 42 tr) | last 30 days  -3.24% (dd  5.3%, 38 tr) | 12h avg -0.019% worst -1.46% | 3d avg -0.024% worst -1.52%
+both (current)     all  -0.52% (dd  7.2%, 42 tr) | 1st half  -0.67% (dd  0.5%, 2 tr) | 2nd half  -0.23% (dd  7.2%, 41 tr) | last 30 days  -3.50% (dd  5.2%, 37 tr) | 12h avg -0.022% worst -1.46% | 3d avg -0.034% worst -1.52%

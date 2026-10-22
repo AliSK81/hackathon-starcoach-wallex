@@ -28,6 +28,8 @@ from wx.decide import code_version, log_decision
 from wx.features import HOUR, add_context, closed_bars
 from wx.llm_cache import SQLiteLLMCache
 from wx.risk import AGENT_LIMITS
+from wx.universe import liquid, tradable_tmn
+from wx.wallex import WallexError
 from wx.wallex_mcp import WallexMCP, candle_bars, microstructure
 
 GUARD_EVERY = 60
@@ -44,11 +46,20 @@ def chat_model(settings: Settings, data_dir: Path | None = None):
 
 
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
-               store, officer: bool = True, limits=AGENT_LIMITS) -> Brain:
+               store, officer: bool = True, limits=AGENT_LIMITS, universe: bool = False) -> Brain:
+    """With universe, the markets are picked again every cycle: every liquid allowed TMN market (universe.py)."""
     mcp = WallexMCP()
 
     def features():
-        table, errors = collect_features(markets, settings, data_dir)
+        pick = markets
+        if universe:
+            try:
+                pick = liquid(tradable_tmn(), executor.held())
+            except WallexError as error:  # keep the full list we started with
+                print(f"Could not refresh the market list: {error}")
+                pick = liquid(markets, executor.held())
+            print(f"  {len(pick)} liquid markets: {' '.join(pick)}", flush=True)
+        table, errors = collect_features(pick, settings, data_dir)
         return add_context(table), errors
 
     def closes(symbol: str, hours: int, now: int) -> list[float]:

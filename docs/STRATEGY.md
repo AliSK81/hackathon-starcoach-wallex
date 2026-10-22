@@ -5,7 +5,8 @@ Details and dates are in [DECISIONS.md](DECISIONS.md) (D = decision, F = checked
 
 ## In one paragraph
 
-Every 15 minutes, a LangGraph agent runs one decision cycle on six liquid Toman markets. Code computes 33 named
+Every 15 minutes, a LangGraph agent runs one decision cycle on every allowed Toman market that is liquid enough
+(21 of 62 on 2026-10-22, picked again each cycle). Code computes 33 named
 features per market, adds whole-market context (the Toman's trend, BTC's day), and finds candidates: markets where
 one of four 12-hour setups is active. An AI analyst studies each candidate with tools. It reads trader skills,
 recalls lessons from past trades, and reads the live order book and trades through the Wallex MCP server. It
@@ -122,7 +123,8 @@ A candidate is a market we don't hold where one of these setups is active ([setu
 - **Stop-loss:** 4 times the 1-hour ATR under the entry, checked on the live bid every minute.
 - **Other exits:** the setup's own exit, a checked early exit from the AI, or the end of trading.
 - **Sells** are limit orders 0.5% under the best bid, so they fill at once but never far below the price.
-- **Markets:** BTCTMN, ETHTMN, SOLTMN, XRPTMN, PEPETMN, USDTTMN. All allowed (D3), liquid, narrow spreads (F40).
+- **Markets:** every allowed TMN market with at least 5 billion TMN traded in 24 hours, plus what we hold, plus
+  BTCTMN and USDTTMN (D42). Tests on the past use our first 6 (BTC, ETH, SOL, XRP, PEPE, USDT) and 12 others.
   We stay in TMN markets. Moving to USDT pairs costs more than it saves over 12 hours (F42, D34).
 
 ## Risk modes: the agent decides how hard to trade
@@ -133,10 +135,13 @@ It weighs the hours left, our result so far, the drawdown and the market.
 
 | Mode | Trades | Risk a trade | Max one coin / in coins | 12 h avg (up) | 3 days avg | 89 days |
 |---|---|---|---|---|---|---|
-| defensive | 12-hour setups where the move beats 1.5x the cost | 0.75% | 25% / 60% | -0.04% (14%) | -0.03% | +3.0% |
-| normal | 12-hour setups | 0.75% | 25% / 60% | -0.07% (23%) | +0.14% | +15.1% |
-| active | 12-hour setups and the 1h trend rule | 0.75% | 25% / 60% | -0.12% (33%) | +0.47% | +24.5% |
-| aggressive | all, full size | 1.5% | 35% / 80% | -0.20% (36%) | +0.73% | +42.5% (drawdown 15%) |
+| defensive | 12-hour setups where the move beats 1.5x the cost | 0.75% | 25% / 60% | -0.04% (14%) | -0.03% | +2.8% |
+| normal | 12-hour setups | 0.75% | 25% / 60% | -0.06% (23%) | +0.13% | +14.7% |
+| active | 12-hour setups and the 1h trend rule | 0.75% | 25% / 60% | -0.13% (34%) | +0.40% | +25.2% |
+| aggressive | all, full size | 1.5% | 35% / 80% | -0.19% (36%) | +0.74% | +42.5% (drawdown 15%) |
+
+On the last 12 hours before going live (F56): defensive -0.02%, normal +0.20%, active -0.07%, aggressive -0.62%,
+holding every market -0.33%. A perfect trader within our caps could have made about +3.5%.
 
 Code keeps the outer limits in every mode: a stop on every buy, the caps, never all-in, no new buys near the end,
 everything sold before the end. After 4% below the peak or 1.5% down in a day, code allows at most `normal`.

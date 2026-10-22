@@ -161,3 +161,17 @@ def test_code_caps_the_mode_after_losses_and_keeps_it_on_a_bad_answer():
     assert mode == "normal" and d[0]["action"] == "HOLD" and "capped" in problems[0]
     _, problems, mode = check_plan(mode_state("reckless"))
     assert mode == "normal" and "unknown" in problems[0]
+
+
+def test_the_backtest_buys_a_market_once_even_with_two_active_setups():
+    from wx.backtest import setups_policy
+    policy = setups_policy(("trend_strong", "trend"))
+    picks = policy(0, {"A": {"setups": ["trend", "trend_strong"]}, "B": {"setups": ["trend"]}}, set())
+    assert picks == [("A", "trend_strong"), ("B", "trend")]
+
+
+def test_the_universe_is_every_liquid_market_plus_held_and_context():
+    from wx.universe import liquid
+    m = {s: {"stats": {"24h_tmnVolume": v}} for s, v in
+         (("BIGTMN", "9e9"), ("THINTMN", "1e9"), ("HELDTMN", "1e8"), ("BTCTMN", "2e9"), ("USDTTMN", "3e10"))}
+    assert list(liquid(m, held={"HELDTMN"})) == ["USDTTMN", "BIGTMN", "BTCTMN", "HELDTMN"]

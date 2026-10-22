@@ -718,3 +718,26 @@ Not done yet:
 
 Next change idea:
 - Check the agent's first real mode choices when the gateway is back. Then go live.
+
+### Change 26 — every liquid allowed market, a backtest bug fixed, the last 12 hours tested — 2026-10-22
+Phase: 4 and 6
+How to see it: `uv run wx agent --shadow`, `results/*.txt`
+Proof it works:
+- The agent looks at every allowed TMN market with enough volume, picked again each cycle (D42). A real cycle ran on 21 markets with no errors (F57).
+- A backtest bug that bought one market twice is fixed, and every result was run again (F55). Changes are under 1 point.
+- The rules on the last 12 hours: between -0.62% and +0.20% by mode; holding lost 0.33% (F56).
+- `uv run pytest` passed 158 tests.
+
+Research: none new.
+Questions: the user asked for all allowed markets, and for a test on the last 12 hours.
+Decisions: D42. Facts F55 to F57.
+
+Shipped:
+- `universe.py`. `features.LIVE_DAYS`: a new market downloads only what live features need. `wx agent` with no markets uses every liquid allowed TMN market.
+- `backtest.setups_policy`: one buy per market.
+
+Not done yet:
+- A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.
+
+Next change idea:
+- Go live.

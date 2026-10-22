@@ -22,7 +22,7 @@ This installs the project and prints which keys are set. Copy `.env.example` to 
 ## Trade with the agent
 
 ```bash
-uv run wx agent --shadow --end-at 2026-10-23T00:30   # fake orders on live data
+uv run wx agent --shadow --end-at 2026-10-23T00:30   # fake orders on live data, every liquid allowed TMN market
 uv run wx order-test USDTTMN                          # check real orders: a buy 20% under the price, read back, cancelled
 uv run wx agent --live --end-at 2026-10-23T00:30     # REAL orders
 ```
