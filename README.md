@@ -66,10 +66,10 @@ uv run wx run
 
 This makes a decision like `wx decide` every 15 minutes, on the beat (at :00, :15, :30 and :45). Every cycle is logged in `data/decisions/`, even one that fails. Errors never stop it. Ctrl+C stops it. It places no real orders. `--interval` and `--cycles` change the beat and the number of cycles.
 
-`--role` sets what the AI does: `pick`, `informed`, `veto` or `agent` (see DECISIONS D24). `--shadow` trades a fake book of 5,000,000 TMN: the risk check sizes each BUY, and fake limit orders fill, stop and close on the live candles, with the same rules as `wx backtest`. The book is `data/shadow/book.json`, and every order event goes to `data/shadow/orders.jsonl`. A restart loses nothing.
+`--role` sets what the AI does: `agent` (the default), `veto`, `informed` or `pick` (see DECISIONS D24 to D31). `--shadow` trades a fake book of 5,000,000 TMN: the risk check sizes each BUY, and fake limit orders fill, stop and close on the live candles, with the same rules as `wx backtest`. The book is `data/shadow/book.json`, and every order event goes to `data/shadow/orders.jsonl`. A restart loses nothing.
 
 ```bash
-uv run wx run --shadow --role veto
+uv run wx run --shadow
 ```
 
 ```bash
