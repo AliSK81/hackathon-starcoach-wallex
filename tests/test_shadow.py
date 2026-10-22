@@ -131,3 +131,21 @@ def test_report_values_open_positions_at_given_prices(tmp_path):
     book.update({"BTCTMN": minutes(20, low_at=10)}, T0 + 1200, log)
     text = report(book, {"BTCTMN": 109.89})
     assert "now +10.00%" in text and "Equity 5,100,000 TMN (+2.00%)" in text
+
+
+def test_agent_role_gets_tools_in_the_live_cycle(monkeypatch, tmp_path):
+    settings = Settings({"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-x"})
+    monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": FEATURES}, {}))
+    monkeypatch.setattr(cycle, "live_spreads", lambda symbols: {s: 0.2 for s in symbols})
+    seen = {}
+
+    def fake_tool_loop(base_url, model, key, messages, tools):
+        seen["tools"] = sorted(tools)
+        seen["record"] = tools["get_setup_record"].run()
+        return Reply(json.dumps({"decisions": []}), "m1", 1.0)
+
+    monkeypatch.setattr(cycle, "chat_with_tools", fake_tool_loop)
+    ctx = Context({"BTCTMN": {}}, settings, tmp_path, role="agent", shadow=True)
+    run_cycle(ctx, 1)
+    assert seen["tools"] == ["get_hourly_closes", "get_market", "get_setup_record"]
+    assert seen["record"]["trend"] == {"trades": 0, "average_net_pct": None, "made_money_pct": None}
