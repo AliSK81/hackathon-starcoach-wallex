@@ -123,6 +123,8 @@ def summary(results: list[dict]) -> str:
                 skipped.append(net)
     counts = {a: sum(d["action"] == a for _, d in rows) for a in ("BUY", "SELL", "HOLD")}
     problems = sum(len(d["problems"]) for _, d in rows) + sum(len(r.get("problems", [])) for r in results)
+    vetoes = sum(bool(d.get("veto")) for _, d in rows)
+    overruled = sum("overruled" in p or "without a veto" in p for _, d in rows for p in d["problems"])
 
     def line(name: str, nets: list[float]) -> str:
         if not nets:
@@ -141,4 +143,5 @@ def summary(results: list[dict]) -> str:
         line("of those, the ones the AI skipped", skipped),
         "  doing nothing                         0  average net +0.00%",
         "AI buys per setup: " + (", ".join(f"{k} {v}" for k, v in per_setup.items()) or "none"),
+        f"Vetoes that stopped a buy: {vetoes}. Vetoes or HOLDs overruled by code: {overruled}.",
     ])

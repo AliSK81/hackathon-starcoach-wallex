@@ -25,6 +25,8 @@ from wx.llm import LLMError, Reply, parse_json
 from wx.prices import append_log
 from wx.rules import MarketRules
 from wx.setups import SETUPS
+from wx.veto import VETOES
+from wx.veto import apply as apply_vetoes
 
 ACTIONS = ("BUY", "SELL", "HOLD")
 MAX_REASON = 400
@@ -52,6 +54,7 @@ class Role:
     text: str
     setups: tuple[str, ...]
     tools: bool = False
+    checked_veto: bool = False  # code buys every allowed setup; the AI can only stop one with a checked veto
 
 
 # The AI's possible roles. `wx replay --role` compares them (DECISIONS D24).
@@ -80,28 +83,26 @@ Buy setups:
 - You may only BUY a market through one of its active setups, and you must name it. A market
   with no active setup is HOLD.
 """, tuple(SETUPS)),
-    # Code buys through the trend setup. The AI may only stop a buy, for a specific danger (D29).
+    # Code buys through the trend setup. The AI can stop a buy only with a veto code checks (veto.py, D30).
     "veto": Role("""
 Buy setups:
-- Code buys a market when its trend setup is active (see the "setups" feature and
+- Code buys every market where the trend setup is active (see the "setups" feature and
   setup_meanings). Other setups in the "setups" feature are for information only.
-- Your job is to veto. For each market where trend is active, answer BUY to let the buy go
-  ahead, or HOLD to stop it. Stop it only for a specific danger you can point to in the
-  features, for example: the move is already very stretched (RSI far above 70, the price far
-  above its averages), so a normal pullback would hit the stop; the market is illiquid (many
-  zero-volume hours, a wide spread); or the data looks broken. A strong trend alone is not a
-  reason to stop.
-- For a BUY, name the setup. Every other market is HOLD.
+- Your job is to review each of these buys and explain it. Answer BUY to let it go ahead, or
+  HOLD with a veto to stop it. The only vetoes are in veto_meanings. Code checks each veto
+  against the features. A HOLD without a veto, or with a veto the features do not support, is
+  overruled and the buy goes ahead.
+- For a BUY, name the setup. In the reason, say what you see in the features either way.
 - Code already sells when the trend turns or the stop is hit. Say SELL for a market we hold
   only for a serious danger you can name.
-""", ("trend",)),
+""", ("trend",), checked_veto=True),
 }
 # The veto role with tools: the AI can look closer before it lets a buy go ahead or stops it.
 AGENT_TEXT = """- You have tools. Before deciding on a candidate, look closer where it helps: the shape of
   its last hours (get_hourly_closes), other markets such as BTCTMN for the whole market
   (get_market, get_hourly_closes), and how the setup did before (get_setup_record).
 """
-ROLES["agent"] = Role(ROLES["veto"].text + AGENT_TEXT, ROLES["veto"].setups, tools=True)
+ROLES["agent"] = Role(ROLES["veto"].text + AGENT_TEXT, ROLES["veto"].setups, tools=True, checked_veto=True)
 DEFAULT_ROLE = "pick"
 
 TAIL = f"""
@@ -118,6 +119,7 @@ Reply with one JSON object and nothing else:
       "symbol": "<market, e.g. BTCTMN>",
       "action": "BUY" | "SELL" | "HOLD",
       "setup": "<for a BUY: the active setup you take. Otherwise empty>",
+      "veto": "<only if your role has vetoes and you stop a buy: the veto. Otherwise empty>",
       "confidence": <number from 0 to 1>,
       "reason": "<why, at most {MAX_REASON} characters>",
       "cited": ["<feature names you used, e.g. rsi14>"],
@@ -175,6 +177,8 @@ def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict, rol
     }
     if setup_history is not None:
         facts["setup_history"] = setup_history
+    if ROLES[role].checked_veto:
+        facts["veto_meanings"] = {code: meaning for code, (meaning, _) in VETOES.items()}
     return [
         {"role": "system", "content": system_prompt(role)},
         {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
@@ -182,8 +186,8 @@ def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict, rol
 
 
 def hold(symbol: str, problem: str | None = None) -> dict:
-    return {"symbol": symbol, "action": "HOLD", "confidence": 0.0, "setup": "", "reason": "", "cited": {},
-            "invalidation": "", "problems": [problem] if problem else []}
+    return {"symbol": symbol, "action": "HOLD", "confidence": 0.0, "setup": "", "veto": "", "reason": "",
+            "cited": {}, "invalidation": "", "problems": [problem] if problem else []}
 
 
 def check_decision(item: dict, features: dict, held: dict, allowed: tuple[str, ...] = tuple(SETUPS)) -> dict:
@@ -223,6 +227,7 @@ def check_decision(item: dict, features: dict, held: dict, allowed: tuple[str, .
         "action": action,
         "confidence": confidence,
         "setup": setup if action == "BUY" else "",
+        "veto": str(item.get("veto") or "")[:40] if action == "HOLD" else "",
         "reason": str(item.get("reason") or "")[:MAX_REASON],
         "cited": cited,
         "invalidation": str(item.get("invalidation") or "")[:MAX_REASON],
@@ -279,6 +284,8 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
         return {**record, "driver": "fallback", "error": str(error),
                 "decisions": [hold(s, "the AI answer was not valid JSON") for s in table]}
     view, decisions, problems = check_answer(answer, table, held, allowed)
+    if ROLES[role].checked_veto:
+        decisions = apply_vetoes(decisions, table, allowed)
     return {**record, "market_view": view, "problems": problems, "decisions": decisions}
 
 

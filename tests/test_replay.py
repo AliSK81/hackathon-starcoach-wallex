@@ -133,8 +133,10 @@ def test_veto_role_may_not_buy_a_dip():
     assert record["driver"] == "rules"  # nothing the veto role may take, so the AI is not asked
     both = {**f, "setups": ["sharp_drop", "trend"]}
     record = decide({"BTCTMN": both}, 5_000_000, {}, lambda m: Reply(json.dumps(answer), "m1", 1.0), "veto")
-    assert record["driver"] == "ai" and record["decisions"][0]["action"] == "HOLD"
-    assert "active and allowed: trend" in record["decisions"][0]["problems"][0]
+    d = record["decisions"][0]
+    # The dip buy is refused, then code buys through trend, because the AI gave no veto.
+    assert record["driver"] == "ai" and (d["action"], d["setup"]) == ("BUY", "trend")
+    assert "active and allowed: trend" in d["problems"][0] and "without a veto" in d["problems"][1]
 
 
 def test_study_report_runs_on_a_small_history():
