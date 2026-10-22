@@ -1,0 +1,66 @@
+Market set 12 (12 markets), 88 days of history. Limit orders, sold into Toman.
+ret = average return per window | med = median | up = share of windows that ended up | worst/best | dd = average max drawdown | tr = trades per window
+
+--- 12h windows: 353 (a new one every 6 h)
+  careful     ret   -0.07%  med   +0.00%  up  35%  worst   -4.30%  best   +3.43%  dd  0.28%  tr   2.5
+  normal      ret   -0.14%  med   -0.09%  up  32%  worst   -4.17%  best   +3.43%  dd  0.38%  tr   3.7
+  active      ret   -0.25%  med   -0.26%  up  31%  worst   -5.17%  best   +5.70%  dd  0.61%  tr   6.9
+  aggressive  ret   -0.28%  med   -0.41%  up  39%  worst   -6.15%  best   +7.55%  dd  1.10%  tr   3.9
+  old trend   ret   -0.25%  med   -0.28%  up  34%  worst   -4.32%  best   +6.55%  dd  0.72%  tr   4.0
+  hold all    ret   -0.20%  med   -0.33%  up  43%  worst   -6.70%  best   +6.98%
+
+--- 24h windows: 351 (a new one every 6 h)
+  careful     ret   -0.03%  med   +0.00%  up  44%  worst   -4.65%  best   +5.71%  dd  0.68%  tr   3.6
+  normal      ret   -0.12%  med   -0.19%  up  36%  worst   -4.52%  best   +5.71%  dd  0.89%  tr   5.4
+  active      ret   -0.18%  med   -0.37%  up  36%  worst   -5.74%  best   +6.90%  dd  1.24%  tr   9.1
+  aggressive  ret   -0.14%  med   -0.54%  up  42%  worst   -6.33%  best  +13.39%  dd  2.12%  tr   5.4
+  old trend   ret   -0.21%  med   -0.50%  up  35%  worst   -4.64%  best   +8.25%  dd  1.38%  tr   5.3
+  hold all    ret   +0.30%  med   -0.07%  up  48%  worst   -8.16%  best  +10.86%
+
+--- 3d windows: 86 (a new one every 24 h)
+  careful     ret   +0.29%  med   -0.01%  up  49%  worst   -5.53%  best   +7.41%  dd  1.85%  tr   7.6
+  normal      ret   +0.21%  med   -0.47%  up  47%  worst   -5.34%  best  +13.86%  dd  2.43%  tr  11.5
+  active      ret   +0.28%  med   -1.04%  up  41%  worst   -7.01%  best  +13.87%  dd  2.88%  tr  16.7
+  aggressive  ret   +0.38%  med   -1.15%  up  42%  worst   -9.47%  best  +20.52%  dd  4.71%  tr  10.8
+  old trend   ret   +0.20%  med   -1.33%  up  41%  worst   -6.41%  best  +16.58%  dd  3.06%  tr  10.1
+  hold all    ret   +2.33%  med   +0.33%  up  53%  worst  -10.21%  best  +23.87%
+
+--- 7d windows: 82 (a new one every 24 h)
+  careful     ret   +1.30%  med   +0.06%  up  52%  worst   -6.51%  best  +18.76%  dd  3.31%  tr  14.1
+  normal      ret   +1.51%  med   -0.80%  up  45%  worst   -6.06%  best  +21.99%  dd  4.37%  tr  21.7
+  active      ret   +2.27%  med   -0.73%  up  48%  worst   -7.65%  best  +22.70%  dd  4.94%  tr  30.2
+  aggressive  ret   +3.06%  med   -0.96%  up  44%  worst  -12.31%  best  +38.39%  dd  7.65%  tr  20.1
+  old trend   ret   +2.08%  med   -0.86%  up  44%  worst   -8.43%  best  +26.28%  dd  5.24%  tr  19.0
+  hold all    ret   +7.01%  med   +2.84%  up  60%  worst  -12.75%  best  +36.53%
+
+--- 14d windows: 38 (a new one every 48 h)
+  careful     ret   +3.20%  med   +3.33%  up  55%  worst   -7.25%  best  +15.04%  dd  5.22%  tr  24.9
+  normal      ret   +3.91%  med   +5.13%  up  58%  worst   -9.61%  best  +17.40%  dd  6.69%  tr  38.3
+  active      ret   +6.39%  med   +7.74%  up  68%  worst  -11.81%  best  +21.28%  dd  7.42%  tr  52.0
+  aggressive  ret   +8.22%  med  +10.54%  up  68%  worst  -14.68%  best  +32.67%  dd 10.71%  tr  36.4
+  old trend   ret   +6.14%  med   +7.61%  up  66%  worst  -12.12%  best  +26.94%  dd  7.42%  tr  33.7
+  hold all    ret  +16.34%  med  +17.07%  up  82%  worst  -14.66%  best  +41.89%
+
+--- 30d windows: 20 (a new one every 72 h)
+  careful     ret  +11.41%  med  +12.34%  up 100%  worst   +0.95%  best  +25.21%  dd  7.18%  tr  47.0
+  normal      ret  +14.46%  med  +14.80%  up  95%  worst   -4.67%  best  +24.37%  dd  8.48%  tr  73.2
+  active      ret  +21.32%  med  +21.30%  up 100%  worst   +2.22%  best  +36.97%  dd  9.82%  tr  97.0
+  aggressive  ret  +26.73%  med  +31.87%  up  95%  worst   -0.15%  best  +46.02%  dd 14.30%  tr  72.9
+  old trend   ret  +20.90%  med  +21.32%  up  95%  worst   -2.72%  best  +44.68%  dd  9.74%  tr  65.0
+  hold all    ret  +48.56%  med  +50.44%  up 100%  worst  +23.37%  best  +64.90%
+
+--- 60d windows: 5 (a new one every 168 h)
+  careful     ret  +23.70%  med  +24.63%  up 100%  worst  +16.43%  best  +28.56%  dd  9.49%  tr  91.8
+  normal      ret  +28.70%  med  +30.02%  up 100%  worst  +16.02%  best  +34.57%  dd 10.41%  tr 144.6
+  active      ret  +46.86%  med  +41.77%  up 100%  worst  +38.30%  best  +60.44%  dd 12.02%  tr 189.6
+  aggressive  ret  +57.61%  med  +52.42%  up 100%  worst  +44.39%  best  +76.35%  dd 15.72%  tr 145.8
+  old trend   ret  +42.90%  med  +40.84%  up 100%  worst  +28.81%  best  +54.79%  dd 10.58%  tr 125.4
+  hold all    ret +110.45%  med +113.10%  up 100%  worst  +78.23%  best +131.35%
+
+--- all windows: 1
+  careful     ret  +19.28%  med  +19.28%  up 100%  worst  +19.28%  best  +19.28%  dd 12.06%  tr 149.0
+  normal      ret  +20.96%  med  +20.96%  up 100%  worst  +20.96%  best  +20.96%  dd 12.73%  tr 227.0
+  active      ret  +40.53%  med  +40.53%  up 100%  worst  +40.53%  best  +40.53%  dd 15.52%  tr 309.0
+  aggressive  ret  +45.81%  med  +45.81%  up 100%  worst  +45.81%  best  +45.81%  dd 19.39%  tr 222.0
+  old trend   ret  +33.96%  med  +33.96%  up 100%  worst  +33.96%  best  +33.96%  dd 13.11%  tr 194.0
+  hold all    ret +128.87%  med +128.87%  up 100%  worst +128.87%  best +128.87%
