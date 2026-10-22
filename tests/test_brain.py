@@ -236,3 +236,51 @@ def test_fast_features_from_minutes():
     f = fast_features(minutes, 100.05)
     assert f["rsi14_5m"] is not None and f["vwap_4h_dev_pct"] is not None and 0 <= f["pos_in_1h_range"] <= 1
     assert fast_features(minutes[:100], 100.0)["rsi14_5m"] is None
+
+
+SEEN: list = []  # every prompt a RecordingLLM was sent (a pydantic model can't keep it on the class)
+
+
+class RecordingLLM(FakeLLM):
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        SEEN.append(messages)
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+def test_static_text_is_in_the_cached_system_prompt_and_the_portfolio_in_the_facts():
+    from wx.brain import EVIDENCE, analyst_prompt, read_skill_text
+    prompt = analyst_prompt("sprint-trading", ENVELOPE)
+    assert read_skill_text("trader-core") in prompt and read_skill_text("sprint-trading") in prompt
+    assert '"short_term"' in prompt and "capitulation" in prompt and str(EVIDENCE["costs"]) in prompt
+    assert analyst_prompt("sprint-trading", ENVELOPE) == prompt  # the same every cycle, so it can be cached
+    assert analyst_prompt("trader-core", ENVELOPE).count("Skill trader-core:") == 1
+    b, _ = brain([plan()], {"SOLTMN": market()})
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(plan()))])
+    SEEN.clear()
+    build_graph(b).invoke({})
+    system, human = SEEN[0][0], SEEN[0][1]
+    assert "Skill trader-core:" in system.content and "short_term" in system.content
+    facts = json.loads(human.content.split("\n\n")[0])
+    assert facts["result_pct"] == {"today_pct": 0.0, "drawdown_pct": 0.0, "since_start_pct": 0.0}
+    assert "envelope" not in facts and "setup_meanings" not in facts  # moved to the system prompt
+
+
+def test_the_debate_and_judge_get_the_evidence_in_their_system_message():
+    case = {"cases": [{"symbol": "SOLTMN", "argument": "x", "evidence": ["rsi14"], "strength": 0.5}]}
+    review = {"reviews": [{"symbol": "SOLTMN", "verdict": "APPROVE", "reason": "ok"}]}
+    b, _ = brain([], {"SOLTMN": market()}, officer=True, debate=True)
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(x)) for x in (plan([buy()]), case, case, review)])
+    SEEN.clear()
+    build_graph(b).invoke({})
+    reviews = [m for m in SEEN if "analyst of a trading bot" in m[0].content
+               or "judge of a trading bot" in m[0].content]
+    assert len(reviews) == 3
+    for system, human in reviews:
+        assert "short_term" in system.content and "short_term" not in human.content
+
+
+def test_cached_tokens_are_counted():
+    from wx.brain import cached_tokens
+    m = AIMessage("x", usage_metadata={"input_tokens": 9000, "output_tokens": 10, "total_tokens": 9010,
+                                       "input_token_details": {"cache_read": 6000}})
+    assert cached_tokens([m, AIMessage("y")]) == 6000

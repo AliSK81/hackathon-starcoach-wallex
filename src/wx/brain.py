@@ -205,6 +205,27 @@ def read_skill_text(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def analyst_prompt(skill: str, env: Envelope) -> str:
+    """The trader's system prompt. Everything in it is the same every cycle of a profile, so the provider can
+    cache it, and so can each later call of the same cycle, which repeats it and the messages before. That is
+    why nothing that changes per cycle goes here: it goes in the first human message (the facts)."""
+    names = ["trader-core"] + ([skill] if skill and skill != "trader-core" else [])
+    texts = "\n".join(f"\nSkill {n}:\n{read_skill_text(n)}" for n in names)
+    return ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT,
+                          envelope=compact(asdict(env)), setups=compact({k: v.meaning for k, v in SETUPS.items()}),
+                          evidence=compact(EVIDENCE), skill_texts=texts)
+
+
+def portfolio_view(account: dict, positions: dict, hours_left, ledger, now: int, env: Envelope) -> dict:
+    """Our account now, as get_portfolio shows it and as the trader's facts carry it."""
+    peak, start = account.get("peak") or 1, account.get("day_start") or account.get("equity") or 1
+    equity = account.get("equity") or 0
+    return {"account": account, "positions": positions, "hours_left": hours_left,
+            "today_pct": round((equity / start - 1) * 100, 2), "drawdown_pct": round((1 - equity / peak) * 100, 2),
+            "since_start_pct": round((equity / 5_000_000 - 1) * 100, 2),
+            "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "envelope": asdict(env)}
+
+
 ANALYST = """You are the trader of a bot on the Wallex exchange in Iran. Spot only, long only, Toman (TMN) markets.
 Your goal: the highest Toman value of the account when trading ends. All coins are sold into Toman then.
 
@@ -222,7 +243,8 @@ on 1, 5 and 15-minute data, and plan holds of minutes to a few hours; a buy that
 bad buy. With days or weeks left, slow down and use 1-hour and 4-hour data.
 
 Work like a professional:
-1. Read the skill trader-core and the skill named in `profile`. Call get_portfolio. Read the market overview.
+1. The skill trader-core, the skill named in `profile`, the hard limits, the setups and our past evidence are
+   below. Your portfolio is in the facts. They are already here: don't fetch them again. Read the market overview.
 2. Find opportunities: get_regime and get_market on the markets that matter, list_markets for the rest.
 3. Check evidence before you act: get_evidence (what worked here, by horizon and exit), get_orderbook (live book
    and trades from the Wallex MCP server), get_candles or get_hourly_closes (shape), recall_lessons.
@@ -233,7 +255,12 @@ Rules: never invent numbers; name the features you used. A buy with no edge afte
 Skills (read_skill): {skills}
 
 Reply with one JSON object and nothing else, in exactly this format:
-{format}"""
+{format}
+
+The hard limits code keeps (envelope): {envelope}
+Setups (names the code knows): {setups}
+Evidence from our tests on the past (get_evidence gives the same): {evidence}
+{skill_texts}"""
 
 FORMAT = """{
   "market_view": "<the overall picture, at most 300 characters>",
@@ -262,6 +289,9 @@ bull and a bear analyst argued each one. Weigh the arguments against the data an
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
 data. Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
 "risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
+
+# The same every call, so it sits in the system message, where the provider can cache it.
+EVIDENCE_NOTE = "\nEvidence from our tests on the past: " + compact(EVIDENCE)
 
 REFLECT = """You review closed trades of a trading bot, to write lessons for its future self.
 Read the skill below, then reply with one JSON object:
@@ -312,13 +342,16 @@ def build_graph(b: Brain, checkpointer=None):
         extra: dict[str, dict] = {}
         micro: dict[str, dict] = {}
         tools = analyst_tools(b, state, extra, micro)
-        prompt = ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT)
+        prompt = analyst_prompt(state["profile"].get("skill", ""), b.env)
+        view = portfolio_view(state["account"], state["positions"], state["hours_left"], b.executor.ledger(),
+                              state["now"], b.env)
         facts = {
             "hours_left": state["hours_left"], "profile": state["profile"], "account_tmn": state["account"],
-            "positions": state["positions"], "envelope": asdict(b.env),
+            "positions": state["positions"],
+            "result_pct": {k: view[k] for k in ("today_pct", "drawdown_pct", "since_start_pct")},
+            "buys_last_24h": view["buys_last_24h"],
             "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
                                                else OVERVIEW),
-            "setup_meanings": {k: v.meaning for k, v in SETUPS.items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
@@ -341,7 +374,8 @@ def build_graph(b: Brain, checkpointer=None):
         except Exception as e:  # any AI failure: fail closed, nothing is bought
             messages, plan, error = [], {}, f"{type(e).__name__}: {e}"[:500]
         ai = {"seconds": round(time.monotonic() - started, 1), "steps": tool_steps(messages),
-              "tokens": token_count(messages), "error": error, "model": getattr(b.llm, "model_name", ""),
+              "tokens": token_count(messages), "cached_tokens": cached_tokens(messages), "error": error,
+              "model": getattr(b.llm, "model_name", ""),
               "largest_prompt_tokens": largest_prompt(messages)}
         return {"plan": plan, "ai": ai, "table": {**table, **extra}, "micro": micro,
                 "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
@@ -352,10 +386,10 @@ def build_graph(b: Brain, checkpointer=None):
             buys = state["plan"].get("buys") or []
             facts = {"buys": buys, "hours_left": state["hours_left"],
                      "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
-                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN"), "evidence": EVIDENCE}
+                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN")}
             try:
                 reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
-                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(compact(facts))])
+                    [SystemMessage(DEBATER.format(side=side) + EVIDENCE_NOTE), HumanMessage(compact(facts))])
                 out = parse_json(text_of(reply))
                 out["tokens"] = (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
             except Exception as e:  # the judge decides without this side's case
@@ -370,11 +404,11 @@ def build_graph(b: Brain, checkpointer=None):
         facts = {"hours_left": state["hours_left"], "buys": buys, "approach": state["plan"].get("approach"),
                  "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
                  "books": state.get("micro"), "bull_case": state.get("bull"), "bear_case": state.get("bear"),
-                 "account": state["account"], "evidence": EVIDENCE}
+                 "account": state["account"]}
         spent = sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
         try:
             reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
-                [SystemMessage(OFFICER), HumanMessage(compact(facts))])
+                [SystemMessage(OFFICER + EVIDENCE_NOTE), HumanMessage(compact(facts))])
             spent += (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
             review = parse_json(text_of(reply))
         except Exception as e:  # without the judge, the trader's plan stands inside the envelope
@@ -596,13 +630,8 @@ def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
     def get_portfolio() -> dict:
         """Our account now: equity, cash, positions with their exit plans, today's result, drawdown, buys in the
         last 24 hours, and the hard limits (envelope)."""
-        acc, ledger = state["account"], b.executor.ledger()
-        peak, start = acc.get("peak") or 1, acc.get("day_start") or acc.get("equity") or 1
-        return {"account": acc, "positions": state["positions"], "hours_left": state["hours_left"],
-                "today_pct": round(((acc.get("equity") or 0) / start - 1) * 100, 2),
-                "drawdown_pct": round((1 - (acc.get("equity") or 0) / peak) * 100, 2),
-                "since_start_pct": round(((acc.get("equity") or 0) / 5_000_000 - 1) * 100, 2),
-                "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "envelope": asdict(b.env)}
+        return portfolio_view(state["account"], state["positions"], state["hours_left"], b.executor.ledger(), now,
+                              b.env)
 
     @tool
     def check_order(symbol: str, risk_pct: float = 1.0, stop_pct: float = 4.0) -> dict:
@@ -748,6 +777,12 @@ def largest_prompt(messages: list) -> int:
 
 def token_count(messages: list) -> int:
     return sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages)
+
+
+def cached_tokens(messages: list) -> int:
+    """Prompt tokens the provider read from its cache (billed at a tenth or less), as it reported them."""
+    return sum(((getattr(m, "usage_metadata", None) or {}).get("input_token_details") or {}).get("cache_read", 0)
+               or 0 for m in messages)
 
 
 def cycle_summary(state: State) -> str:

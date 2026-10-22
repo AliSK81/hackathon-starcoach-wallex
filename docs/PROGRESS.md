@@ -786,3 +786,20 @@ Decisions: D46.
 
 Not done yet:
 - `wx order-test` and the start of the live run.
+
+### Change 30 — fewer AI tokens, the same information — 2026-10-22
+Phase: 2 and 5
+How to see it: `uv run pytest tests/test_brain.py`; the cycle line in `data/brain/live_run.log` now shows the cached tokens
+Proof it works:
+- The trader's playbooks, evidence, hard limits and setups are in its system prompt, and its result so far in its facts (D47). Tests check that the prompt holds them, is the same every cycle, and that the facts carry the portfolio numbers.
+- The bull, bear and judge get the evidence in their system message. A test checks it.
+- Each cycle logs `cached_tokens`.
+- On 26 real cycles, the cost at GPT-5 Mini rates falls from about $7.53 to about $3.53 a day if the gateway caches (F65).
+- `uv run pytest` passed 166 tests. One 16-token AI call checked GPT-5 Mini access: the current mohaymen key does not allow it.
+
+Research: none new.
+Questions: the user asked to cut wasted tokens without making decisions worse.
+Decisions: D47. Fact F65.
+
+Not done yet:
+- See `cached_tokens` in the first live cycles, to know if the gateway caches.

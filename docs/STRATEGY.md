@@ -69,6 +69,8 @@ reviewer. It decides; code checks only the hard limits.
 | `recall_lessons` | Lessons from our past trades, losses first. |
 | `read_skill` | Trader playbooks: core, regimes, exits, risk and sizing, dips, trends, order book, the Toman, the deadline, reviews. |
 
+The core playbook, the playbook for the current pace, the evidence, the hard limits and the setups are already in the trader's instructions, and its result so far is in its facts. So it does not spend a tool call on them. Those instructions are the same every cycle, so the AI provider can cache them (D47).
+
 It also sees, without asking: its last 8 cycles, its lessons (losses first), its own thesis for each position, the
 hard limits, and an overview of every liquid market. Middleware caps it at 12 tool calls and retries a failed tool.
 

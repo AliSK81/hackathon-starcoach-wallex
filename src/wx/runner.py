@@ -135,7 +135,8 @@ def report(state: dict) -> str:
     ai = state.get("ai") or {}
     if ai:
         lines.append(f"Analyst: {ai.get('seconds')} s, {len(ai.get('steps') or [])} tool calls, "
-                     f"{ai.get('tokens')} tokens, largest prompt {ai.get('largest_prompt_tokens')} of 32,768."
+                     f"{ai.get('tokens')} tokens ({ai.get('cached_tokens', 0)} read from the cache), largest prompt "
+                     f"{ai.get('largest_prompt_tokens')}."
                      + (f" Failed: {ai['error']}" if ai.get("error") else ""))
     plan = state.get("plan") or {}
     if plan.get("market_view"):
