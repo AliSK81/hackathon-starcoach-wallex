@@ -285,7 +285,7 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
                 "decisions": [hold(s, "the AI answer was not valid JSON") for s in table]}
     view, decisions, problems = check_answer(answer, table, held, allowed)
     if ROLES[role].checked_veto:
-        decisions = apply_vetoes(decisions, table, allowed)
+        decisions = apply_vetoes(decisions, table, allowed, held)
     return {**record, "market_view": view, "problems": problems, "decisions": decisions}
 
 

@@ -26,14 +26,15 @@ VETOES: dict[str, tuple[str, Callable[[dict, dict], bool]]] = {
 }
 
 
-def apply(decisions: list[dict], table: dict[str, dict], allowed: tuple[str, ...]) -> list[dict]:
+def apply(decisions: list[dict], table: dict[str, dict], allowed: tuple[str, ...], held=()) -> list[dict]:
     """Turn every market with an allowed active setup into a BUY, unless the AI gave a supported veto.
 
-    A SELL is left alone. A market with no allowed active setup stays as it is.
+    A SELL is left alone. So is a market we already hold (HOLD means keep it), and
+    a market with no allowed active setup.
     """
     for d in decisions:
         usable = [s for s in table[d["symbol"]]["setups"] if s in allowed]
-        if not usable or d["action"] in ("BUY", "SELL"):
+        if not usable or d["action"] in ("BUY", "SELL") or d["symbol"] in held:
             continue
         code = d.get("veto", "")
         if code in VETOES and VETOES[code][1](table[d["symbol"]], table):

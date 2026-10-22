@@ -52,3 +52,8 @@ def test_veto_role_prompt_lists_the_vetoes_and_code_checks_them():
     assert set(seen["facts"]["veto_meanings"]) == {"illiquid", "stale_data", "market_crash"}
     d = record["decisions"][0]
     assert d["action"] == "BUY" and "veto 'illiquid' overruled" in d["problems"][0]
+
+
+def test_a_held_market_is_kept_not_bought_again():
+    [d] = apply([hold("XTMN")], {"XTMN": QUIET}, ("trend",), held={"XTMN": {}})
+    assert (d["action"], d["problems"]) == ("HOLD", [])
