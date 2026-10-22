@@ -21,7 +21,7 @@ from statistics import mean
 from typing import Callable
 
 from wx.candles import candle_path, load_candles
-from wx.decide import decide
+from wx.decide import DEFAULT_ROLE, ROLES, decide
 from wx.features import HOUR, HOURS_USED, MINUTE, build_features, closed_bars
 from wx.llm import Reply
 
@@ -51,8 +51,8 @@ class History:
         i = bisect.bisect_right(self.minute_starts, t - MINUTE)
         return self.minutes[i - 1][4] if i else None
 
-    def exit_after(self, t: int, entry: float, stop_pct: float | None) -> tuple[float, bool]:
-        """Price change from entry at t to the exit, in %, and whether the stop was hit.
+    def exit_after(self, t: int, entry: float, stop_pct: float | None) -> tuple[float, int]:
+        """Price change from entry at t to the exit, in %, and when the exit happened.
 
         The exit is the close 24 hours later, or the stop if a 1-minute low
         reaches it first. If a candle opens below the stop, the exit is that open.
@@ -63,10 +63,10 @@ class History:
             last = bisect.bisect_right(self.minute_starts, t + HORIZON - MINUTE)
             for candle in self.minutes[first:last]:
                 if candle[1] <= stop:
-                    return (candle[1] / entry - 1) * 100, True
+                    return (candle[1] / entry - 1) * 100, int(candle[0])
                 if candle[3] <= stop:
-                    return (stop / entry - 1) * 100, True
-        return (self.close_at(t + HORIZON) / entry - 1) * 100, False
+                    return (stop / entry - 1) * 100, int(candle[0]) + MINUTE
+        return (self.close_at(t + HORIZON) / entry - 1) * 100, t + HORIZON
 
     def features_at(self, t: int, spread_pct: float, taker_fee: float | None) -> dict:
         """The features as they were at t. Only candles that ended by t are used."""
@@ -85,9 +85,9 @@ def outcome(history: History, t: int, features: dict, stop_atr: float | None = S
     cost = features["round_trip_cost_pct"] or 0.0
     fwd, _ = history.exit_after(t, features["price"], None)
     stop_pct = stop_atr * features["atr14_pct"] if stop_atr else None
-    with_stop, stopped = history.exit_after(t, features["price"], stop_pct)
+    with_stop, exit_t = history.exit_after(t, features["price"], stop_pct)
     return {"fwd_24h_pct": round(fwd, 2), "net_pct": round(fwd - cost, 2),
-            "net_stop_pct": round(with_stop - cost, 2), "stopped": stopped}
+            "net_stop_pct": round(with_stop - cost, 2), "stopped": exit_t < t + HORIZON}
 
 
 def sample_times(start: int, end: int, count: int, seed: int) -> list[int]:
@@ -102,29 +102,36 @@ def pick_times(candidates: list[int], count: int, seed: int) -> list[int]:
 
 
 def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, float],
-                  fees: dict[str, float], ask: Callable[[list[dict]], Reply]) -> dict:
-    """One past moment: features, the checked AI decision, and what happened in the next 24 hours."""
+                  fees: dict[str, float], ask: Callable[[list[dict]], Reply], role: str = DEFAULT_ROLE,
+                  setup_history: Callable[[int], dict] | None = None) -> dict:
+    """One past moment: features, the checked AI decision, and what happened in the next 24 hours.
+
+    setup_history(t) gives each setup's record from before t, for the "informed" role.
+    """
     table, feature_errors = {}, {}
     for symbol, history in histories.items():
         try:
             table[symbol] = history.features_at(t, spreads[symbol], fees.get(symbol))
         except ValueError as error:
             feature_errors[symbol] = str(error)
-    record = decide(table, CASH_TMN, {}, ask) if table else {"driver": "none", "decisions": []}
+    known = setup_history(t) if setup_history else None
+    record = (decide(table, CASH_TMN, {}, ask, role, known) if table
+              else {"driver": "none", "role": role, "decisions": []})
     outcomes = {symbol: outcome(histories[symbol], t, features) for symbol, features in table.items()}
     moment = datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="minutes")
     return {"moment": moment, "markets": table, "feature_errors": feature_errors, **record, "outcomes": outcomes}
 
 
 def run_replay(times: list[int], histories: dict[str, History], spreads: dict[str, float],
-               fees: dict[str, float], ask: Callable[[list[dict]], Reply], log: Path, workers: int = 4) -> list[dict]:
+               fees: dict[str, float], ask: Callable[[list[dict]], Reply], log: Path, workers: int = 4,
+               role: str = DEFAULT_ROLE, setup_history: Callable[[int], dict] | None = None) -> list[dict]:
     """Replay every moment, a few at a time. Each result is logged as soon as it is ready."""
     log.parent.mkdir(parents=True, exist_ok=True)
     lock = threading.Lock()
     results = []
 
     def one(t: int) -> None:
-        result = replay_moment(t, histories, spreads, fees, ask)
+        result = replay_moment(t, histories, spreads, fees, ask, role, setup_history)
         with lock:
             results.append(result)
             with log.open("a", encoding="utf-8") as f:
@@ -138,14 +145,17 @@ def run_replay(times: list[int], histories: dict[str, History], spreads: dict[st
 
 
 def summary(results: list[dict]) -> str:
-    """The AI's buys, every active setup, and doing nothing, over the next 24 hours.
+    """The AI's buys, the setups its role may take, every setup, and doing nothing, over the next 24 hours.
 
     Results use the stop-loss (STOP_ATR) and are net of the round-trip cost.
     """
     rows = [(r, d) for r in results for d in r["decisions"] if d["symbol"] in r["outcomes"]]
+    role = results[0].get("role", DEFAULT_ROLE) if results else DEFAULT_ROLE
+    allowed = ROLES[role].setups
     buys = [r["outcomes"][d["symbol"]]["net_stop_pct"] for r, d in rows if d["action"] == "BUY"]
+    every = [r["outcomes"][d["symbol"]]["net_stop_pct"] for r, d in rows if r["markets"][d["symbol"]]["setups"]]
     setups = [(r["outcomes"][d["symbol"]]["net_stop_pct"], d["action"] == "BUY")
-              for r, d in rows if r["markets"][d["symbol"]]["setups"]]
+              for r, d in rows if any(s in allowed for s in r["markets"][d["symbol"]]["setups"])]
     skipped = [net for net, bought in setups if not bought]
     counts = {a: sum(d["action"] == a for _, d in rows) for a in ("BUY", "SELL", "HOLD")}
 
@@ -160,13 +170,15 @@ def summary(results: list[dict]) -> str:
         if d["action"] == "BUY":
             per_setup[d["setup"]] = per_setup.get(d["setup"], 0) + 1
     return "\n".join([
+        f"Role: {role} (may buy through: {', '.join(allowed)}). "
         f"Moments: {len(results)}. AI failures: {sum(r['driver'] == 'fallback' for r in results)}. "
         f"Market decisions: {len(rows)} ({counts['BUY']} BUY, {counts['SELL']} SELL, {counts['HOLD']} HOLD). "
         f"Problems found: {sum(len(d['problems']) for _, d in rows) + sum(len(r.get('problems', [])) for r in results)}.",
         f"Next 24 hours, with a stop {STOP_ATR:g} ATR below the entry, net of the round-trip cost:",
         line("AI buys", buys),
-        line("every active setup (no AI)", [net for net, _ in setups]),
-        line("setups the AI skipped", skipped),
+        line("every setup this role may take", [net for net, _ in setups]),
+        line("of those, the ones the AI skipped", skipped),
+        line("every active setup", every),
         "  doing nothing                         0  average net +0.00%",
         "AI buys per setup: " + (", ".join(f"{k} {v}" for k, v in per_setup.items()) or "none"),
     ])

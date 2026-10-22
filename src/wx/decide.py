@@ -13,6 +13,7 @@ Log: data/decisions/<UTC date>.jsonl, one JSON line per decision, including
 
 import json
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -29,7 +30,7 @@ ACTIONS = ("BUY", "SELL", "HOLD")
 MAX_REASON = 400
 MAX_VIEW = 400
 
-SYSTEM_PROMPT = f"""You are the strategist of a trading bot on the Wallex exchange in Iran.
+HEAD = """You are the strategist of a trading bot on the Wallex exchange in Iran.
 You decide, for each market you are given, whether to BUY, SELL or HOLD.
 
 How the bot works:
@@ -42,7 +43,20 @@ How the bot works:
   One hour's move is usually smaller than our costs, so judge each market over the next day.
 - Every buy then sell pays round_trip_cost_pct (fees plus spread). Compare it with
   typical_24h_move_pct, the usual size of a one-day move.
+"""
 
+
+@dataclass(frozen=True)
+class Role:
+    """What the AI is asked to do, and which setups it may buy through."""
+    text: str
+    setups: tuple[str, ...]
+
+
+# The AI's possible roles. `wx replay --role` compares them (DECISIONS D24).
+ROLES = {
+    # The AI picks among all active setups (change 13). It made results worse (F20).
+    "pick": Role("""
 Buy setups:
 - Code checks fixed buy setups on every market. The ones that hold now are in the "setups"
   feature, and setup_meanings says what each one is.
@@ -50,7 +64,38 @@ Buy setups:
 - Your job is to judge each active setup: take it, or skip it. Take it when the other features
   support it and the likely gain over the next day beats round_trip_cost_pct. Skip it when they
   warn against it, and say which features warn. A market with no active setup is HOLD.
+""", tuple(SETUPS)),
+    # The AI sees each setup's past record, and takes a setup unless it finds a specific warning.
+    "informed": Role("""
+Buy setups:
+- Code checks fixed buy setups on every market. The ones that hold now are in the "setups"
+  feature, and setup_meanings says what each one is.
+- setup_history gives each setup's past results on these markets, using only data from before
+  now: how many entries, the average result after costs and the stop, and how often it made
+  money. Weigh it. A setup with a good record has earned trust. A setup with a poor record
+  needs clear extra support from the features.
+- The default is to BUY an active setup. Skip it only when you can name a specific warning in
+  the features, and say which features warn.
+- You may only BUY a market through one of its active setups, and you must name it. A market
+  with no active setup is HOLD.
+""", tuple(SETUPS)),
+    # Code buys the mean-reversion setups. The AI may only stop a buy, for a serious danger.
+    "veto": Role("""
+Buy setups:
+- Code buys a market when one of its mean-reversion setups is active: sharp_drop or oversold
+  (see the "setups" feature and setup_meanings). Other setups in the "setups" feature are for
+  information only.
+- Your job is to veto. For each market where sharp_drop or oversold is active, answer BUY to let
+  the buy go ahead, or HOLD to stop it. Stop it only for a specific, serious danger you can point
+  to in the features, for example a crash that is still going on across all markets, or data
+  that looks broken. A normal fall is what these setups are built to buy, so it is not a reason
+  to stop.
+- For a BUY, name the setup. Every other market is HOLD.
+""", ("sharp_drop", "oversold")),
+}
+DEFAULT_ROLE = "pick"
 
+TAIL = f"""
 Actions:
 - BUY: open or add to a position, through an active setup of this market.
 - SELL: sell what we hold in this market. Only for markets listed in "held".
@@ -72,6 +117,10 @@ Reply with one JSON object and nothing else:
   ]
 }}
 Give exactly one decision for every market. Write each market name exactly as given."""
+
+
+def system_prompt(role: str) -> str:
+    return HEAD + ROLES[role].text + TAIL
 
 
 def code_version() -> str:
@@ -105,7 +154,8 @@ def holdings(balances: dict[str, dict], rules: dict[str, MarketRules], table: di
     return int(free("TMN")), held
 
 
-def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict) -> list[dict]:
+def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict, role: str = DEFAULT_ROLE,
+                   setup_history: dict | None = None) -> list[dict]:
     facts = {
         "feature_meanings": FEATURES,
         "setup_meanings": {name: meaning for name, (meaning, _) in SETUPS.items()},
@@ -114,8 +164,10 @@ def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict) -> 
         "held": held,
         "markets": table,
     }
+    if setup_history is not None:
+        facts["setup_history"] = setup_history
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt(role)},
         {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
     ]
 
@@ -125,7 +177,7 @@ def hold(symbol: str, problem: str | None = None) -> dict:
             "invalidation": "", "problems": [problem] if problem else []}
 
 
-def check_decision(item: dict, features: dict, held: dict) -> dict:
+def check_decision(item: dict, features: dict, held: dict, allowed: tuple[str, ...] = tuple(SETUPS)) -> dict:
     """One checked decision. Anything wrong makes it HOLD, with the reasons in problems."""
     symbol = item["symbol"]
     problems = []
@@ -152,9 +204,10 @@ def check_decision(item: dict, features: dict, held: dict) -> dict:
         problems.append(f"{action} without any known feature cited")
         action = "HOLD"
     setup = str(item.get("setup") or "")
-    if action == "BUY" and setup not in features.get("setups", []):
+    usable = [s for s in features.get("setups", []) if s in allowed]
+    if action == "BUY" and setup not in usable:
         problems.append(f"BUY through setup {setup!r}, which is not active here "
-                        f"(active: {', '.join(features.get('setups', [])) or 'none'})")
+                        f"(active and allowed: {', '.join(usable) or 'none'})")
         action = "HOLD"
     return {
         "symbol": symbol,
@@ -168,7 +221,8 @@ def check_decision(item: dict, features: dict, held: dict) -> dict:
     }
 
 
-def check_answer(answer: dict, table: dict[str, dict], held: dict) -> tuple[str, list[dict], list[str]]:
+def check_answer(answer: dict, table: dict[str, dict], held: dict,
+                 allowed: tuple[str, ...] = tuple(SETUPS)) -> tuple[str, list[dict], list[str]]:
     """Market view, one checked decision per market (in table order), and answer-level problems."""
     problems = []
     items = answer.get("decisions")
@@ -185,23 +239,26 @@ def check_answer(answer: dict, table: dict[str, dict], held: dict) -> tuple[str,
         else:
             by_symbol[symbol] = item
     decisions = [
-        check_decision(by_symbol[s], table[s], held) if s in by_symbol else hold(s, "the AI gave no decision")
+        check_decision(by_symbol[s], table[s], held, allowed) if s in by_symbol else hold(s, "the AI gave no decision")
         for s in table
     ]
     return str(answer.get("market_view") or "")[:MAX_VIEW], decisions, problems
 
 
-def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callable[[list[dict]], Reply]) -> dict:
+def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callable[[list[dict]], Reply],
+           role: str = DEFAULT_ROLE, setup_history: dict | None = None) -> dict:
     """Ask the AI and return the checked decision record. Never raises for an AI problem.
 
-    With no active setup and nothing held, there is nothing to decide. The AI
-    is not asked, every market is HOLD, and the record says driver "rules".
+    With no setup this role may take and nothing held, there is nothing to
+    decide. The AI is not asked, every market is HOLD, and the record says
+    driver "rules".
     """
-    record = {"driver": "ai", "error": None, "ai": None, "market_view": "", "problems": []}
-    if not held and not any(f.get("setups") for f in table.values()):
+    allowed = ROLES[role].setups
+    record = {"driver": "ai", "role": role, "error": None, "ai": None, "market_view": "", "problems": []}
+    if not held and not any(s in allowed for f in table.values() for s in f.get("setups", [])):
         return {**record, "driver": "rules", "decisions": [hold(s, None) for s in table]}
     try:
-        reply = ask(build_messages(table, cash_tmn, held))
+        reply = ask(build_messages(table, cash_tmn, held, role, setup_history))
     except LLMError as error:
         return {**record, "driver": "fallback", "error": str(error),
                 "decisions": [hold(s, "the AI call failed") for s in table]}
@@ -212,7 +269,7 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
     except LLMError as error:
         return {**record, "driver": "fallback", "error": str(error),
                 "decisions": [hold(s, "the AI answer was not valid JSON") for s in table]}
-    view, decisions, problems = check_answer(answer, table, held)
+    view, decisions, problems = check_answer(answer, table, held, allowed)
     return {**record, "market_view": view, "problems": problems, "decisions": decisions}
 
 

@@ -41,6 +41,31 @@ def entries(rows: list[dict], setup: str | None) -> list[dict]:
     return picked
 
 
+class SetupRecord:
+    """Each setup's past entries, to tell the AI how a setup did, using only data from before a moment.
+
+    An entry counts once its 24 hours are over. Results use the stop (STOP_ATR) and are net of costs.
+    """
+
+    def __init__(self, rows: list[dict], histories: dict[str, History]):
+        self.results = {
+            name: [(r["t"], outcome(histories[r["symbol"]], r["t"], r["features"])["net_stop_pct"])
+                   for r in entries(rows, name)]
+            for name in SETUPS
+        }
+
+    def at(self, t: int) -> dict:
+        record = {}
+        for name, results in self.results.items():
+            nets = [net for start, net in results if start + HORIZON <= t]
+            record[name] = {
+                "entries": len(nets),
+                "average_net_pct": round(mean(nets), 2) if nets else None,
+                "made_money_pct": round(100 * sum(n > 0 for n in nets) / len(nets)) if nets else None,
+            }
+        return record
+
+
 def stats(nets: list[float]) -> str:
     if not nets:
         return "no entries"

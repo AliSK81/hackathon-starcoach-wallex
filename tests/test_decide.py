@@ -55,7 +55,7 @@ def test_bad_parts_turn_into_hold_with_a_reason():
         "not a number from 0 to 1": item(confidence=1.5),
         "nothing to sell": item(action="SELL"),
         "without any known feature": item(cited=("magic", {"x": 1})),
-        "which is not active here (active: sharp_drop)": item(setup="breakout"),
+        "which is not active here (active and allowed: sharp_drop)": item(setup="breakout"),
     }
     for expected, bad in cases.items():
         d = by_symbol(check_answer(answer(bad), TABLE, {})[1])["BTCTMN"]
@@ -72,7 +72,7 @@ def test_unknown_cited_names_are_flagged_but_known_ones_kept():
 def test_buy_needs_an_active_setup_in_that_market():
     d = by_symbol(check_answer(answer(item("ETHTMN")), TABLE, {})[1])["ETHTMN"]
     assert d["action"] == "HOLD" and d["setup"] == ""
-    assert d["problems"] == ["BUY through setup 'sharp_drop', which is not active here (active: none)"]
+    assert d["problems"] == ["BUY through setup 'sharp_drop', which is not active here (active and allowed: none)"]
 
 
 def test_no_setup_and_nothing_held_means_no_ai_call():

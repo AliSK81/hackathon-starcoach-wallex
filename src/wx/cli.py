@@ -8,18 +8,19 @@ from urllib.parse import urlparse
 
 from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
+from wx.backtest import scenarios
 from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
-from wx.decide import code_version, decide, holdings, log_decision
+from wx.decide import DEFAULT_ROLE, ROLES, code_version, decide, holdings, log_decision
 from wx.features import FEATURES, market_features
 from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
 from wx.replay import History, pick_times, run_replay, sample_times, summary
 from wx.rules import MarketRules
+from wx.study import SetupRecord, scan
 from wx.study import report as study_report
-from wx.study import scan
 from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
@@ -314,8 +315,18 @@ def run_study(symbols: list[str], settings: Settings, stops: list[float]) -> int
     return 0
 
 
+def run_backtest(symbols: list[str], settings: Settings) -> int:
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    histories, spreads, fees = past_inputs(markets, settings)
+    print("Rebuilding the features at every past hour ...")
+    print(scenarios(scan(histories, spreads, fees), histories))
+    return 0
+
+
 def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int,
-                   any_time: bool) -> int:
+                   any_time: bool, role: str) -> int:
     if missing_ai_settings(settings):
         return 1
     markets = pick_markets(symbols)
@@ -324,20 +335,23 @@ def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: i
     histories, spreads, fees = past_inputs(markets, settings)
     newest = int(min(h.minutes[-1][0] for h in histories.values() if h.minutes))
     start, end = newest - days * 86400, newest - 86400
+    allowed = ROLES[role].setups
+    print("Rebuilding the features at every past hour ...")
+    rows = scan(histories, spreads, fees) if role == "informed" or not any_time else []
     if any_time:
         times = sample_times(start, end, moments, seed)
         kind = "moments"
     else:
-        print("Finding past hours with an active setup ...")
-        candidates = sorted({r["t"] for r in scan(histories, spreads, fees) if r["features"]["setups"]})
+        candidates = sorted({r["t"] for r in rows if any(s in allowed for s in r["features"]["setups"])})
         times = pick_times([t for t in candidates if start <= t <= end], moments, seed)
-        kind = f"moments with an active setup (of {len(candidates)})"
+        kind = f"moments with a setup the {role} role may take (of {len(candidates)})"
+    setup_history = SetupRecord(rows, histories).at if role == "informed" else None
     base_url, model = settings.get("LLM_BASE_URL"), settings.get("LLM_MODEL")
     log = DATA_DIR / "replay" / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.jsonl"
     print(f"Replaying {len(times)} {kind} from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
     results = run_replay(times, histories, spreads, fees,
                          lambda messages: chat(base_url, model, settings.get("LLM_API_KEY"), messages, json_mode=True),
-                         log, workers)
+                         log, workers, role, setup_history)
     print(summary(results))
     return 0
 
@@ -408,6 +422,10 @@ def main(argv: list[str] | None = None) -> int:
     replayer.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
     replayer.add_argument("--workers", type=int, default=4, help="AI calls at the same time (default 4)")
     replayer.add_argument("--any-time", action="store_true", help="pick any moments, not only ones with a setup")
+    replayer.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
+                          help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
+    tester = commands.add_parser("backtest", help="trade 5,000,000 TMN over the saved history, rules only")
+    tester.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     studier = commands.add_parser("study", help="how each buy setup did in the past, without the AI")
     studier.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     studier.add_argument("--stops", type=float, nargs="*", default=[2.0, 3.0, 4.0],
@@ -430,7 +448,9 @@ def main(argv: list[str] | None = None) -> int:
         return run_ai(Settings.load())
     if args.command == "replay":
         return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers,
-                              args.any_time)
+                              args.any_time, args.role)
+    if args.command == "backtest":
+        return run_backtest(args.symbols, Settings.load())
     if args.command == "study":
         return run_study(args.symbols, Settings.load(), args.stops)
     if args.command == "run":
