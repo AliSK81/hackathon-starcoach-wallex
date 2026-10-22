@@ -4,7 +4,7 @@ import pytest
 
 from wx import cycle
 from wx.config import Settings
-from wx.cycle import Context, run_cycle
+from wx.cycle import Context, act, run_cycle
 from wx.llm import Reply
 from wx.replay import History
 from wx.risk import Verdict
@@ -87,3 +87,13 @@ def test_shadow_cycle_places_an_approved_buy(monkeypatch, tmp_path):
     second = run_cycle(ctx, 2)
     assert second["shadow"]["verdicts"]["BTCTMN"]["rule"] == "already held"
     assert "Shadow book: equity" in cycle.report(second)
+
+
+def test_buys_are_funded_in_order_of_the_ai_confidence(tmp_path):
+    book = Book()
+    table = {s: FEATURES for s in ("AAATMN", "BBBTMN", "CCCTMN")}
+    decisions = [{"symbol": s, "action": "BUY", "setup": "trend", "confidence": c}
+                 for s, c in (("AAATMN", 0.5), ("BBBTMN", 0.9), ("CCCTMN", 0.7))]
+    account = book.account({s: 100.0 for s in table}, T0)
+    act(book, decisions, table, account, T0, tmp_path / "orders.jsonl")
+    assert [o.symbol for o in book.orders] == ["BBBTMN", "CCCTMN", "AAATMN"]

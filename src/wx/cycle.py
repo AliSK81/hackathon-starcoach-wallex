@@ -151,9 +151,14 @@ def run_cycle(ctx: Context, cycle: int | None = None) -> dict:
 
 
 def act(book: Book, decisions: list[dict], table: dict[str, dict], account, now: int, log: Path) -> dict:
-    """Turn checked decisions into fake orders: the risk check sizes each BUY, a SELL closes now."""
+    """Turn checked decisions into fake orders: the risk check sizes each BUY, a SELL closes now.
+
+    Sells go first, to free cash. Buys go in order of the AI's confidence, so when the
+    limits leave room for only some buys, the AI's strongest ones get it.
+    """
     verdicts = {}
-    for d in decisions:
+    order = {"SELL": 0, "BUY": 1, "HOLD": 2}
+    for d in sorted(decisions, key=lambda d: (order[d["action"]], -d["confidence"])):
         symbol, f = d["symbol"], table[d["symbol"]]
         if d["action"] == "SELL":
             book.sell_now(symbol, f, now, log)
