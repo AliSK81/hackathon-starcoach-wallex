@@ -5,7 +5,7 @@ in inactive_markets.txt.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from importlib.resources import files
 from pathlib import Path
@@ -32,7 +32,7 @@ def top_by_volume(markets: dict[str, dict], n: int) -> list[str]:
 
 def save_snapshot(markets: dict[str, dict], data_dir: Path, now: datetime | None = None) -> Path:
     """Write the raw market list to data/markets/<UTC time>.json."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     path = data_dir / "markets" / f"{now:%Y%m%dT%H%M%SZ}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     snapshot = {"fetched_at": now.isoformat(), "markets": markets}

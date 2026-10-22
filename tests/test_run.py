@@ -32,7 +32,7 @@ def fake_world(monkeypatch, tmp_path, chat):
     monkeypatch.setattr(Settings, "load", classmethod(lambda cls: cls(SETTINGS)))
     monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
     monkeypatch.setattr(cli, "pick_markets", lambda symbols: {"BTCTMN": {}})
-    monkeypatch.setattr(cli, "every", lambda interval, step, cycles: every(interval, step, cycles, sleep=lambda s: None))
+    monkeypatch.setattr(cli, "every", lambda interval, step, cycles: every(interval, step, cycles, lambda s: None))
     monkeypatch.setattr(cycle, "chat", chat)
 
 

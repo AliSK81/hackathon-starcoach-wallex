@@ -13,11 +13,11 @@ Log: data/decisions/<UTC date>.jsonl, one JSON line per decision, including
 
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable
 
 from wx import __version__
 from wx.features import FEATURES
@@ -95,10 +95,11 @@ Buy setups:
 """, ("sharp_drop", "oversold")),
 }
 # The veto role with tools: the AI can look closer before it lets a buy go ahead or stops it.
-ROLES["agent"] = Role(ROLES["veto"].text + """- You have tools. Before deciding on a candidate, look closer where it helps: the shape of
+AGENT_TEXT = """- You have tools. Before deciding on a candidate, look closer where it helps: the shape of
   its last hours (get_hourly_closes), other markets such as BTCTMN for the whole market
   (get_market, get_hourly_closes), and how the setup did before (get_setup_record).
-""", ROLES["veto"].setups, tools=True)
+"""
+ROLES["agent"] = Role(ROLES["veto"].text + AGENT_TEXT, ROLES["veto"].setups, tools=True)
 DEFAULT_ROLE = "pick"
 
 TAIL = f"""
@@ -280,7 +281,7 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
 
 
 def log_decision(data_dir: Path, record: dict, now: datetime | None = None) -> Path:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     path = data_dir / "decisions" / f"{now:%Y-%m-%d}.jsonl"
     append_log(path, {"time": now.isoformat(timespec="seconds"), **record})
     return path

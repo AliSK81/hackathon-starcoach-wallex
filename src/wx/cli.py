@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,10 +13,10 @@ from wx.backtest import scenarios
 from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
-from wx.cycle import Context, collect_features, run_cycle, taker_fees
+from wx.cycle import Context, collect_features, live_spreads, run_cycle, taker_fees
 from wx.cycle import report as cycle_report
-from wx.decide import DEFAULT_ROLE, ROLES, code_version, decide, holdings, log_decision
-from wx.features import FEATURES, market_features
+from wx.decide import DEFAULT_ROLE, ROLES, code_version, log_decision
+from wx.features import FEATURES
 from wx.llm import LLMError, Reply, chat, chat_with_tools, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
@@ -24,7 +24,7 @@ from wx.replay import History, pick_times, run_replay, sample_times, summary
 from wx.rules import MarketRules
 from wx.study import SetupRecord, scan
 from wx.study import report as study_report
-from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees, fetch_markets
+from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
 
@@ -199,7 +199,7 @@ def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int 
     ctx = Context(markets, settings, DATA_DIR, role, shadow)
 
     def step(cycle: int) -> None:
-        print(f"--- cycle {cycle} at {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
+        print(f"--- cycle {cycle} at {datetime.now(UTC):%Y-%m-%d %H:%M:%S} UTC")
         try:
             print(cycle_report(run_cycle(ctx, cycle)))
         except Exception as error:  # log it, then let the beat report it and go on
@@ -225,16 +225,8 @@ def past_inputs(markets: dict[str, dict], settings: Settings):
     """Saved history, today's spread and the taker fee for each market, for `wx replay` and `wx study`."""
     now = int(time.time())
     histories = {s: History.load(DATA_DIR, s, now) for s in markets}
-    spreads = {}
-    for s in markets:
-        try:
-            bid, ask = fetch_best_prices(s)
-            spreads[s] = float((ask - bid) / ((ask + bid) / 2) * 100)
-        except WallexError:
-            spreads[s] = 0.3
-            print(f"  {s}: could not read the book, so the spread is taken as 0.3%")
     fees = taker_fees(settings) or {s: TMN_TAKER_FEE for s in markets}
-    return histories, spreads, fees
+    return histories, live_spreads(markets), fees
 
 
 def run_study(symbols: list[str], settings: Settings, stops: list[float]) -> int:
@@ -286,7 +278,7 @@ def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: i
         tools = review_tools(table, lambda s, n: histories[s].hourly_closes(t, n), lambda: record.at(t))
         return chat_with_tools(base_url, model, key, messages, tools)
 
-    log = DATA_DIR / "replay" / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.jsonl"
+    log = DATA_DIR / "replay" / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.jsonl"
     print(f"Replaying {len(times)} {kind} from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
     results = run_replay(times, histories, spreads, fees, ask, log, workers, role,
                          record.at if role == "informed" else None)

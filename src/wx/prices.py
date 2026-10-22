@@ -6,7 +6,7 @@ Wallex fails is logged too, with the error, and the loop goes on.
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def append_log(path: Path, record: dict) -> None:
 
 
 def run_cycle(cycle: int, symbols: list[str], data_dir: Path) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     prices, errors = read_prices(symbols)
     record = {"time": now.isoformat(timespec="seconds"), "cycle": cycle, "prices": prices, "errors": errors}
     append_log(log_path(data_dir, now), record)

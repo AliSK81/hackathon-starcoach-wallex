@@ -13,12 +13,12 @@ import bisect
 import json
 import random
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from statistics import mean
-from typing import Callable
 
 from wx.candles import candle_path, load_candles
 from wx.decide import DEFAULT_ROLE, ROLES, decide
@@ -136,7 +136,7 @@ def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, floa
     record = (decide(table, CASH_TMN, {}, lambda messages: ask(messages, t, table), role, known) if table
               else {"driver": "none", "role": role, "decisions": []})
     outcomes = {symbol: outcome(histories[symbol], t, features) for symbol, features in table.items()}
-    moment = datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="minutes")
+    moment = datetime.fromtimestamp(t, UTC).isoformat(timespec="minutes")
     return {"moment": moment, "markets": table, "feature_errors": feature_errors, **record, "outcomes": outcomes}
 
 
@@ -184,14 +184,15 @@ def summary(results: list[dict]) -> str:
                 f"net above 0 in {sum(n > 0 for n in nets) / len(nets):.0%}, total {sum(nets):+.1f}%")
 
     per_setup = {}
-    for r, d in rows:
+    for _, d in rows:
         if d["action"] == "BUY":
             per_setup[d["setup"]] = per_setup.get(d["setup"], 0) + 1
+    problems = sum(len(d["problems"]) for _, d in rows) + sum(len(r.get("problems", [])) for r in results)
     return "\n".join([
         f"Role: {role} (may buy through: {', '.join(allowed)}). "
         f"Moments: {len(results)}. AI failures: {sum(r['driver'] == 'fallback' for r in results)}. "
         f"Market decisions: {len(rows)} ({counts['BUY']} BUY, {counts['SELL']} SELL, {counts['HOLD']} HOLD). "
-        f"Problems found: {sum(len(d['problems']) for _, d in rows) + sum(len(r.get('problems', [])) for r in results)}.",
+        f"Problems found: {problems}.",
         f"Next 24 hours, with a stop {STOP_ATR:g} ATR below the entry, net of the round-trip cost:",
         line("AI buys", buys),
         line("every setup this role may take", [net for net, _ in setups]),

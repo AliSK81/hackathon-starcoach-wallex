@@ -4,7 +4,7 @@ Each tool only sees data up to the moment being decided, so a replay of a
 past moment can't leak the future. Every call is logged with the decision.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from wx.llm import Tool
 

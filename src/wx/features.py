@@ -7,9 +7,9 @@ cite it and code can check it. FEATURES says what each one means.
 
 import bisect
 import time
-from statistics import median
 from decimal import Decimal
 from pathlib import Path
+from statistics import median
 
 from wx import indicators as ind
 from wx.candles import KEEP_DAYS, SIZES, candle_path, load_candles, update_candles

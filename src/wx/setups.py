@@ -6,7 +6,7 @@ in the setup study (DECISIONS F17). Trend pullback and range dip lost, so
 they are left out.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 # Name -> (what it means, the rule). The AI sees the meanings.
 SETUPS: dict[str, tuple[str, Callable[[dict], bool]]] = {

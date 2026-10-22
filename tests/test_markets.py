@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from wx import cli
 from wx.markets import allowed_markets, load_inactive, save_snapshot, top_by_volume
@@ -36,7 +36,7 @@ def test_top_by_volume_handles_missing_stats():
 
 
 def test_snapshot_is_saved(tmp_path):
-    now = datetime(2026, 10, 22, 8, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 22, 8, 30, tzinfo=UTC)
     path = save_snapshot(MARKETS, tmp_path, now)
     assert path.name == "20261022T083000Z.json"
     saved = json.loads(path.read_text(encoding="utf-8"))

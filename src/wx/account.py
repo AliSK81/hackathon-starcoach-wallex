@@ -5,7 +5,7 @@ Free balance = value - locked (research file 05, section 5).
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -34,7 +34,7 @@ def fee_groups(fees: dict[str, dict]) -> Counter:
 
 def save_account(held: dict, fees: dict, data_dir: Path, now: datetime | None = None) -> Path:
     """Write balances and fees to data/account/<UTC time>.json."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     path = data_dir / "account" / f"{now:%Y%m%dT%H%M%SZ}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"fetched_at": now.isoformat(), "balances": held, "fees": fees}), encoding="utf-8")

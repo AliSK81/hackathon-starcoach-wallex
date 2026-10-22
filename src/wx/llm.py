@@ -9,8 +9,8 @@ import json
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 TIMEOUT = 120
 

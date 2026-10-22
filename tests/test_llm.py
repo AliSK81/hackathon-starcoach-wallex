@@ -36,7 +36,8 @@ def test_request_shape_and_key_in_header_only(monkeypatch):
     assert KEY not in seen["url"] and KEY not in json.dumps(seen["body"])
     assert seen["body"]["response_format"] == {"type": "json_object"}
     assert seen["body"]["temperature"] == 0.0
-    assert (reply.text, reply.reasoning, reply.model, reply.usage) == ('{"action": "HOLD"}', "thinking", "m1", {"total_tokens": 42})
+    assert (reply.text, reply.reasoning) == ('{"action": "HOLD"}', "thinking")
+    assert (reply.model, reply.usage) == ("m1", {"total_tokens": 42})
 
 
 def test_think_tags_are_split_from_the_answer():

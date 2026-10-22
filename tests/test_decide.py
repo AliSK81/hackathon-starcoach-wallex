@@ -97,7 +97,8 @@ def test_missing_extra_and_double_markets():
     _, decisions, problems = check_answer(answer(item(), item(), item("DOGETMN")), TABLE, {})
     assert by_symbol(decisions)["ETHTMN"]["problems"] == ["the AI gave no decision"]
     assert [d["symbol"] for d in decisions] == ["BTCTMN", "ETHTMN"]
-    assert problems == ["two decisions for BTCTMN, kept the first", "decision for a market we did not ask about: 'DOGETMN'"]
+    assert problems == ["two decisions for BTCTMN, kept the first",
+                        "decision for a market we did not ask about: 'DOGETMN'"]
     assert check_answer({"decisions": "BUY all"}, TABLE, {})[2] == ["no decisions list in the answer"]
 
 

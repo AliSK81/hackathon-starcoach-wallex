@@ -66,7 +66,8 @@ def test_sell_now_closes_at_the_bid(tmp_path):
     book = Book()
     book.place("BTCTMN", "sharp_drop", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, log)
     book.update({"BTCTMN": minutes(20, low_at=10)}, T0 + 1200, log)
-    assert book.positions({"BTCTMN": {"price": 110.0}}, T0 + 3600)["BTCTMN"]["pnl_pct"] == pytest.approx(10.11, abs=0.01)
+    position = book.positions({"BTCTMN": {"price": 110.0}}, T0 + 3600)["BTCTMN"]
+    assert position["pnl_pct"] == pytest.approx(10.11, abs=0.01)
     book.sell_now("BTCTMN", {"price": 110.0, "spread_pct": 0.2}, T0 + 3600, log)
     assert book.orders[0].status == "closed" and book.active() == []
 

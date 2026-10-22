@@ -100,6 +100,12 @@ Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
 uv run pytest
 ```
 
+Lint (unused imports, import order, simple bugs):
+
+```bash
+uvx ruff check src tests
+```
+
 ## Docs
 
 - [Roadmap](docs/ROADMAP.md): the phases.

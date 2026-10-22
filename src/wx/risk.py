@@ -43,7 +43,8 @@ def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: L
     if account.equity < account.day_start * (1 - limits.daily_loss):
         return Verdict(0, stop_pct, "daily loss", f"rejected: lost more than {limits.daily_loss:.0%} today")
     if account.equity < account.peak * (1 - limits.max_drawdown):
-        return Verdict(0, stop_pct, "drawdown", f"rejected: equity is more than {limits.max_drawdown:.0%} below its peak")
+        reason = f"rejected: equity is more than {limits.max_drawdown:.0%} below its peak"
+        return Verdict(0, stop_pct, "drawdown", reason)
     if features["data_age_min"] > limits.max_data_age_min:
         return Verdict(0, stop_pct, "stale data", f"rejected: data is {features['data_age_min']} minutes old")
     caps = {
@@ -54,7 +55,8 @@ def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: L
     }
     name, tmn = min(caps.items(), key=lambda kv: kv[1])
     if tmn < limits.min_order_tmn:
-        return Verdict(0, stop_pct, name, f"rejected: the {name} limit leaves {max(tmn, 0):,.0f} TMN, below the minimum order")
+        reason = f"rejected: the {name} limit leaves {max(tmn, 0):,.0f} TMN, below the minimum order"
+        return Verdict(0, stop_pct, name, reason)
     if name == "risk per trade":
         return Verdict(round(tmn), stop_pct, "approved", "approved")
     return Verdict(round(tmn), stop_pct, name, f"shrunk to the {name} limit")

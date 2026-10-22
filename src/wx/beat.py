@@ -5,7 +5,7 @@ goes on at the next beat. Ctrl+C stops it.
 """
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 
 def every(interval: int, step: Callable[[int], None], cycles: int | None = None, sleep=time.sleep) -> None:

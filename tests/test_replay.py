@@ -2,9 +2,9 @@ import json
 
 import pytest
 
+from wx.decide import decide
 from wx.llm import LLMError, Reply
 from wx.replay import BEAT, History, pick_times, replay_moment, run_replay, sample_times, summary
-from wx.decide import decide
 from wx.study import SetupRecord, entries, report, scan
 
 T0 = 1_700_000_000 - 1_700_000_000 % 3600

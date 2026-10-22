@@ -7,11 +7,10 @@ The same risk check runs in shadow and live trading.
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from statistics import mean
-from typing import Callable
 
-from wx.features import MINUTE
 from wx.replay import HORIZON, History
 from wx.risk import Account, Limits, check_buy, update_peak
 
