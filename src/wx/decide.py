@@ -135,8 +135,21 @@ def system_prompt(role: str) -> str:
     return HEAD + ROLES[role].text + TAIL
 
 
+_VERSION: str | None = None
+
+
 def code_version() -> str:
-    """Package version and git commit, e.g. "0.1.0+82877ed". "+dirty" if files changed."""
+    """Package version and git commit, e.g. "0.1.0+82877ed". "+dirty" if files changed.
+
+    Read once per process: a running bot keeps the code it started with, so later commits must not change what
+    its log says it runs."""
+    global _VERSION
+    if _VERSION is None:
+        _VERSION = _read_version()
+    return _VERSION
+
+
+def _read_version() -> str:
     try:
         commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
                                 timeout=5, check=True).stdout.strip()

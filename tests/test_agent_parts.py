@@ -134,3 +134,11 @@ def test_reasoning_models_get_no_temperature():
     assert "temperature" not in payload
     settings = Settings({"LLM_MODEL": "mohaymen/qwen3.8-27b", "LLM_BASE_URL": "http://localhost:1", "LLM_API_KEY": "x"})
     assert chat_model(settings)._get_request_payload([("user", "hi")])["temperature"] == 0
+
+
+def test_the_code_version_is_read_once(monkeypatch):
+    from wx import decide
+    monkeypatch.setattr(decide, "_VERSION", None)
+    calls = []
+    monkeypatch.setattr(decide, "_read_version", lambda: calls.append(1) or f"0.1.0+v{len(calls)}")
+    assert decide.code_version() == decide.code_version() == "0.1.0+v1" and len(calls) == 1
