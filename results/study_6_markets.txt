@@ -1,17 +1,17 @@
 Rebuilding the features at every past hour for BTCTMN ETHTMN SOLTMN XRPTMN PEPETMN USDTTMN ...
-12780 market-hours over 89 days. Each entry is played out through its setup's exit. Net = after the round-trip cost (taker). +/- is one standard error.
+12804 market-hours over 89 days. Each entry is played out through its setup's exit. Net = after the round-trip cost (taker). +/- is one standard error.
 trend: 345 entries. Exit: sell when the 1h EMA 20 falls below the EMA 50.
-  no stop     all +2.29% (win 40%, +/- 0.48)  | 1st half +3.39% (win 39%, +/- 0.86)  | 2nd half +1.25% (win 41%, +/- 0.45)
-  stop 2 ATR  all +1.63% (win 30%, +/- 0.45)  | 1st half +2.47% (win 30%, +/- 0.81)  | 2nd half +0.84% (win 30%, +/- 0.42)
-  stop 3 ATR  all +2.08% (win 36%, +/- 0.48)  | 1st half +3.22% (win 37%, +/- 0.86)  | 2nd half +1.00% (win 36%, +/- 0.44)
-  stop 4 ATR  all +2.05% (win 37%, +/- 0.48)  | 1st half +3.13% (win 37%, +/- 0.86)  | 2nd half +1.03% (win 38%, +/- 0.45)
+  no stop     all +2.29% (win 40%, +/- 0.48)  | 1st half +3.36% (win 38%, +/- 0.85)  | 2nd half +1.25% (win 41%, +/- 0.45)
+  stop 2 ATR  all +1.63% (win 30%, +/- 0.45)  | 1st half +2.45% (win 29%, +/- 0.80)  | 2nd half +0.83% (win 30%, +/- 0.43)
+  stop 3 ATR  all +2.07% (win 36%, +/- 0.48)  | 1st half +3.19% (win 36%, +/- 0.85)  | 2nd half +0.99% (win 36%, +/- 0.45)
+  stop 4 ATR  all +2.05% (win 37%, +/- 0.48)  | 1st half +3.11% (win 36%, +/- 0.86)  | 2nd half +1.02% (win 38%, +/- 0.46)
 sharp_drop: 103 entries. Exit: sell after 24 hours.
-  no stop     all +0.44% (win 52%, +/- 0.35)  | 1st half +0.57% (win 56%, +/- 0.40)  | 2nd half +0.30% (win 49%, +/- 0.61)
-  stop 2 ATR  all -0.05% (win 42%, +/- 0.36)  | 1st half -0.04% (win 43%, +/- 0.42)  | 2nd half -0.06% (win 41%, +/- 0.60)
-  stop 3 ATR  all +0.09% (win 48%, +/- 0.37)  | 1st half +0.44% (win 54%, +/- 0.41)  | 2nd half -0.30% (win 41%, +/- 0.64)
-  stop 4 ATR  all +0.26% (win 50%, +/- 0.37)  | 1st half +0.50% (win 56%, +/- 0.41)  | 2nd half +0.00% (win 45%, +/- 0.64)
+  no stop     all +0.46% (win 52%, +/- 0.35)  | 1st half +0.60% (win 56%, +/- 0.40)  | 2nd half +0.32% (win 49%, +/- 0.61)
+  stop 2 ATR  all -0.02% (win 42%, +/- 0.36)  | 1st half -0.01% (win 43%, +/- 0.42)  | 2nd half -0.03% (win 41%, +/- 0.60)
+  stop 3 ATR  all +0.11% (win 48%, +/- 0.37)  | 1st half +0.47% (win 54%, +/- 0.41)  | 2nd half -0.27% (win 41%, +/- 0.64)
+  stop 4 ATR  all +0.29% (win 50%, +/- 0.37)  | 1st half +0.52% (win 56%, +/- 0.41)  | 2nd half +0.02% (win 45%, +/- 0.64)
 oversold: 64 entries. Exit: sell after 24 hours.
-  no stop     all +0.19% (win 45%, +/- 0.31)  | 1st half +0.21% (win 36%, +/- 0.56)  | 2nd half +0.18% (win 50%, +/- 0.37)
-  stop 2 ATR  all -0.42% (win 36%, +/- 0.31)  | 1st half -0.16% (win 32%, +/- 0.59)  | 2nd half -0.56% (win 38%, +/- 0.37)
-  stop 3 ATR  all +0.02% (win 42%, +/- 0.32)  | 1st half -0.14% (win 32%, +/- 0.61)  | 2nd half +0.10% (win 48%, +/- 0.37)
-  stop 4 ATR  all +0.01% (win 45%, +/- 0.34)  | 1st half +0.01% (win 36%, +/- 0.60)  | 2nd half +0.01% (win 50%, +/- 0.41)
+  no stop     all +0.21% (win 45%, +/- 0.31)  | 1st half +0.24% (win 36%, +/- 0.56)  | 2nd half +0.20% (win 50%, +/- 0.37)
+  stop 2 ATR  all -0.40% (win 36%, +/- 0.31)  | 1st half -0.13% (win 32%, +/- 0.59)  | 2nd half -0.54% (win 38%, +/- 0.37)
+  stop 3 ATR  all +0.04% (win 42%, +/- 0.32)  | 1st half -0.11% (win 32%, +/- 0.61)  | 2nd half +0.13% (win 48%, +/- 0.38)
+  stop 4 ATR  all +0.03% (win 45%, +/- 0.34)  | 1st half +0.03% (win 36%, +/- 0.61)  | 2nd half +0.03% (win 50%, +/- 0.41)
