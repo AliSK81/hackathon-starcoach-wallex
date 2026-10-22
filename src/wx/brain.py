@@ -38,7 +38,12 @@ from statistics import pstdev
 from typing import Annotated, Any, TypedDict
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ToolCallLimitMiddleware, ToolRetryMiddleware
+from langchain.agents.middleware import (
+    ClearToolUsesEdit,
+    ContextEditingMiddleware,
+    ToolCallLimitMiddleware,
+    ToolRetryMiddleware,
+)
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -56,6 +61,21 @@ MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
 TOKEN_BUDGET = 6_000_000  # AI tokens a UTC day. Above it, no debate and no officer
 AUTO_LESSONS = 6  # lessons put in the analyst's facts, losses first
+# The model's whole window is 32,768 tokens: the prompt plus its reasoning and answer (F59). Its reasoning has
+# taken up to about 7,000. Past CLEAR_AT tokens, older tool results are cleared, keeping the newest KEEP_TOOLS.
+CLEAR_AT = 16_000
+KEEP_TOOLS = 4
+
+
+def compact(value) -> str:
+    """JSON without spaces: the model's window is small."""
+    return json.dumps(value, default=str, separators=(",", ":"), ensure_ascii=False)
+
+
+def overview_table(table: dict) -> dict:
+    """The market overview as one header and one row per market: far fewer tokens than a dict per market."""
+    return {"columns": ["symbol", *OVERVIEW],
+            "rows": [[s, *[f.get(k) for k in OVERVIEW]] for s, f in table.items()]}
 
 # What our tests on the past found, for get_evidence. Each entry names the fact in docs/DECISIONS.md.
 EVIDENCE = {
@@ -273,22 +293,23 @@ def build_graph(b: Brain, checkpointer=None):
         prompt = ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT)
         facts = {
             "hours_left": state["hours_left"], "account_tmn": state["account"], "positions": state["positions"],
-            "envelope": asdict(b.env), "markets_overview": {s: {k: f.get(k) for k in OVERVIEW}
-                                                           for s, f in table.items()},
+            "envelope": asdict(b.env), "markets_overview": overview_table(table),
             "setup_meanings": {k: v.meaning for k, v in SETUPS.items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
-            "feature_meanings": FEATURES,
+            "feature_names": "explain_features gives the meaning of any feature",
         }
         # A LangChain agent (a LangGraph subgraph): the model calls tools until it answers. Middleware caps the
         # tool calls (then the model must answer) and tries a failed tool once more (the MCP server can be slow).
         agent = create_agent(b.llm, tools, system_prompt=prompt, middleware=[
             ToolCallLimitMiddleware(run_limit=MAX_TOOL_ROUNDS, exit_behavior="continue"),
-            ToolRetryMiddleware(max_retries=1, initial_delay=2.0)])
+            ToolRetryMiddleware(max_retries=1, initial_delay=2.0),
+            ContextEditingMiddleware(edits=[ClearToolUsesEdit(trigger=CLEAR_AT, keep=KEEP_TOOLS,
+                                                              exclude_tools=("get_portfolio",))])])
         started = time.monotonic()
         try:
-            ask = json.dumps(facts, default=str) + "\n\nWhen you are done, answer in the JSON format you were given."
+            ask = compact(facts) + "\n\nWhen you are done, answer in the JSON format you were given."
             result = agent.invoke({"messages": [HumanMessage(ask)]}, {"recursion_limit": 4 * MAX_TOOL_ROUNDS + 10})
             messages = result["messages"]
             plan = final_json(b.llm, messages)
@@ -296,7 +317,8 @@ def build_graph(b: Brain, checkpointer=None):
         except Exception as e:  # any AI failure: fail closed, nothing is bought
             messages, plan, error = [], {}, f"{type(e).__name__}: {e}"[:500]
         ai = {"seconds": round(time.monotonic() - started, 1), "steps": tool_steps(messages),
-              "tokens": token_count(messages), "error": error, "model": getattr(b.llm, "model_name", "")}
+              "tokens": token_count(messages), "error": error, "model": getattr(b.llm, "model_name", ""),
+              "largest_prompt_tokens": largest_prompt(messages)}
         return {"plan": plan, "ai": ai, "table": {**table, **extra}, "micro": micro,
                 "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
                 "tokens_today": state.get("tokens_today", 0) + ai["tokens"]}
@@ -306,11 +328,10 @@ def build_graph(b: Brain, checkpointer=None):
             buys = state["plan"].get("buys") or []
             facts = {"buys": buys, "hours_left": state["hours_left"],
                      "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
-                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN"),
-                     "evidence": EVIDENCE, "feature_meanings": FEATURES}
+                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN"), "evidence": EVIDENCE}
             try:
                 reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
-                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(json.dumps(facts, default=str))])
+                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(compact(facts))])
                 out = parse_json(text_of(reply))
                 out["tokens"] = (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
             except Exception as e:  # the judge decides without this side's case
@@ -329,7 +350,7 @@ def build_graph(b: Brain, checkpointer=None):
         spent = sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
         try:
             reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
-                [SystemMessage(OFFICER), HumanMessage(json.dumps(facts, default=str))])
+                [SystemMessage(OFFICER), HumanMessage(compact(facts))])
             spent += (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
             review = parse_json(text_of(reply))
         except Exception as e:  # without the judge, the trader's plan stands inside the envelope
@@ -499,8 +520,10 @@ def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
         """Every allowed Toman market on Wallex now, with its 24-hour Toman volume and price change from Wallex's
         stats, and whether it is in your overview. Use get_market for the features of any of them."""
         if b.market_list is None:
-            return [{"symbol": s, "in_overview": True} for s in table]
-        return [{**m, "in_overview": m.get("symbol") in table} for m in b.market_list()]
+            return [[s, None, None, True] for s in table]
+        rows = [[m.get("symbol"), round((m.get("volume_24h_tmn") or 0) / 1e9, 1), m.get("change_24h_pct"),
+                 m.get("symbol") in table] for m in b.market_list()]
+        return [["symbol", "volume_24h_billion_tmn", "change_24h_pct", "in_overview"], *rows]
 
     @tool
     def get_market(symbol: str) -> dict:
@@ -576,12 +599,17 @@ def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
         return recall(b.store, {k: v for k, v in (("symbol", symbol), ("setup", setup)) if v} or None, 8)
 
     @tool
+    def explain_features(names: list[str] | None = None) -> dict:
+        """The meaning of the named features (all of them if no names are given)."""
+        return {k: v for k, v in FEATURES.items() if not names or k in names}
+
+    @tool
     def read_skill(name: str) -> str:
         """The full text of one trader skill (see the skills list in your instructions)."""
         return read_skill_text(name)
 
     return [get_portfolio, list_markets, get_market, get_regime, get_evidence, get_orderbook, get_candles,
-            get_hourly_closes, check_order, recall_lessons, read_skill]
+            get_hourly_closes, check_order, recall_lessons, explain_features, read_skill]
 
 
 def recall(store, filter_: dict | None, limit: int) -> list:
@@ -683,6 +711,11 @@ def tool_steps(messages: list) -> list[dict]:
     results = {m.tool_call_id: m.content for m in messages if isinstance(m, ToolMessage)}
     return [{"tool": c["name"], "args": c["args"], "result": str(results.get(c["id"], ""))[:600]}
             for m in messages if isinstance(m, AIMessage) for c in (m.tool_calls or [])]
+
+
+def largest_prompt(messages: list) -> int:
+    """The largest prompt any AI call of the trader sent, in tokens, as the provider counted it."""
+    return max(((getattr(m, "usage_metadata", None) or {}).get("input_tokens", 0) for m in messages), default=0)
 
 
 def token_count(messages: list) -> int:
