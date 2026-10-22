@@ -21,6 +21,16 @@ MAKER_FEE_PCT = 0.25
 TAKER_FEE_PCT = 0.30
 FILL_WINDOW = HOUR
 
+# The past order book is not saved, so tests on the past use a fixed spread per market, in %.
+# Medians of the live spreads we logged (F30). Fixed values make every re-run give the same result.
+TYPICAL_SPREAD_PCT = {"BTCTMN": 0.15, "ETHTMN": 0.18, "SOLTMN": 0.26, "XRPTMN": 0.38, "PEPETMN": 0.19,
+                      "USDTTMN": 0.014}
+OTHER_SPREAD_PCT = 0.3  # markets we have not measured
+
+
+def typical_spreads(symbols) -> dict[str, float]:
+    return {s: TYPICAL_SPREAD_PCT.get(s, OTHER_SPREAD_PCT) for s in symbols}
+
 
 class History:
     """All saved candles for one market, as floats, oldest first."""

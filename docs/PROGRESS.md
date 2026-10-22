@@ -509,3 +509,33 @@ Not done yet:
 
 Next change idea:
 - Read the checked-veto replay. Let the shadow book run through the night. Then write the doc for judges (Phase 7) with the honest results.
+
+### Change 18 — the checked veto helps a little, repeatable backtests, saved results — 2026-10-22
+Phase: 2 (done, see below) and 3
+How to see it: `uv run wx replay --from results/replay_trend_checked_veto.jsonl`, `uv run wx backtest`
+Proof it works:
+- Checked veto replay (F31): buys the AI let through +1.53%, all trend buys +1.44%, the 6 it stopped -0.91%. The first AI role that did not make results worse.
+- `wx backtest` twice in a row gives the same output, because past tests now use fixed spreads (F30).
+- Without the daily-loss and drawdown halts, the backtest does worse on both market sets (F29).
+- The live shadow book filled its first three orders, and `wx shadow` shows them at today's prices.
+- `uv run pytest` passed 113 tests. `uvx ruff check src tests` is clean.
+
+Research: none new.
+Questions: none
+Decisions: none new. Facts F29, F30, F31.
+
+Shipped:
+- `results/`: backtest, study and replay outputs, with the commands that make them.
+- `wx replay --from <log>`: the summary of a saved replay, without the AI.
+- `wx shadow`: open positions valued at the last saved close.
+- Decisions carry `decided_at`. Shadow orders carry the same time, so each order links to its decision.
+- `cli.py`: shorter, with a dispatch table. The default role is now `veto`.
+- Phase 2 checklist: all done. The results review found the time frame, setup and AI-role problems, and each is fixed and measured.
+
+Not done yet:
+- The agent replay (checked veto plus tools) is running.
+- `wx watch` is collecting live spreads through the night, to update F30 with daytime values later.
+- Phase 3: the shadow book must run alone for several cycles with fills and exits.
+
+Next change idea:
+- Read the agent replay. Mark Phase 2 done in the roadmap if nothing new comes up. Keep the shadow book running.

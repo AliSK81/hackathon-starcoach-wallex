@@ -136,7 +136,6 @@ def test_report_values_open_positions_at_given_prices(tmp_path):
 def test_agent_role_gets_tools_in_the_live_cycle(monkeypatch, tmp_path):
     settings = Settings({"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-x"})
     monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": FEATURES}, {}))
-    monkeypatch.setattr(cycle, "live_spreads", lambda symbols: {s: 0.2 for s in symbols})
     seen = {}
 
     def fake_tool_loop(base_url, model, key, messages, tools):

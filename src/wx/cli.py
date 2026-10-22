@@ -13,7 +13,7 @@ from wx.backtest import scenarios
 from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, candle_path, last_close, update_candles
 from wx.config import KEYS, Settings
-from wx.cycle import Context, collect_features, live_spreads, run_cycle, taker_fees
+from wx.cycle import Context, collect_features, run_cycle, taker_fees
 from wx.cycle import report as cycle_report
 from wx.decide import DEFAULT_ROLE, ROLES, code_version, log_decision
 from wx.features import FEATURES
@@ -26,7 +26,7 @@ from wx.shadow import Book
 from wx.shadow import report as shadow_report
 from wx.study import SetupRecord, lookup_from, scan
 from wx.study import report as study_report
-from wx.trades import History
+from wx.trades import History, typical_spreads
 from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
@@ -225,11 +225,11 @@ TMN_TAKER_FEE = 0.003
 
 
 def past_inputs(markets: dict[str, dict], settings: Settings):
-    """Saved history, today's spread and the taker fee for each market, for `wx replay` and `wx study`."""
+    """Saved history, the typical spread and the taker fee for each market, for tests on the past."""
     now = int(time.time())
     histories = {s: History.load(DATA_DIR, s, now) for s in markets}
     fees = taker_fees(settings) or {s: TMN_TAKER_FEE for s in markets}
-    return histories, live_spreads(markets), fees
+    return histories, typical_spreads(markets), fees
 
 
 def run_study(symbols: list[str], settings: Settings, stops: list[float]) -> int:

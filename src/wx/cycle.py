@@ -20,8 +20,8 @@ from wx.risk import check_buy
 from wx.rules import MarketRules
 from wx.shadow import Book
 from wx.study import SetupRecord, scan
-from wx.trades import History
-from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees
+from wx.trades import History, typical_spreads
+from wx.wallex import WallexError, fetch_balances, fetch_fees
 
 SETUP_RECORD_HOURS = 24  # how often the agent's setup record is rebuilt
 
@@ -71,24 +71,11 @@ def collect_features(symbols, settings: Settings, data_dir: Path) -> tuple[dict[
     return table, errors
 
 
-def live_spreads(symbols, fallback: float = 0.3) -> dict[str, float]:
-    """Today's spread per market in %, from the live book. `fallback` if the book can't be read."""
-    spreads = {}
-    for s in symbols:
-        try:
-            bid, ask = fetch_best_prices(s)
-            spreads[s] = float((ask - bid) / ((ask + bid) / 2) * 100)
-        except WallexError:
-            spreads[s] = fallback
-            print(f"  {s}: could not read the book, so the spread is taken as {fallback}%")
-    return spreads
-
-
 def setup_record(ctx: Context, now: int) -> dict:
     """Each setup's record up to now, rebuilt from the saved history once a day (it takes about 30 s)."""
     if ctx.record is None or now - ctx.record_t >= SETUP_RECORD_HOURS * HOUR:
         histories = {s: History.load(ctx.data_dir, s, now) for s in ctx.markets}
-        rows = scan(histories, live_spreads(ctx.markets), {})
+        rows = scan(histories, typical_spreads(ctx.markets), {})
         ctx.record, ctx.record_t = SetupRecord(rows, histories), now
     return ctx.record.at(now)
 

@@ -23,4 +23,4 @@ Goal: every cycle, the bot computes indicators from live data. The AI makes a de
 - [x] Setups. Code flags 4 setups (D22). The AI may only buy through one. `wx study` measures them without the AI (F19). `wx replay` compares the AI with taking every setup and with doing nothing, with a stop (D23). Result: the AI made it worse (F20).
 - [x] Find a role for the AI that does not make results worse. `pick` and `informed` did. `veto` did not (F21, D24).
 - [x] Check the setups on markets they were never tuned on, and keep only ones that hold up. Only `trend` held up (F25, D29).
-- [ ] Replay the veto role on trend moments. It must not make results worse.
+- [x] Replay the veto role on trend moments. The free veto made it worse (F27). The checked veto did not (F31, D30).

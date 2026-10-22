@@ -1,0 +1,27 @@
+Rebuilding the features at every past hour ...
+--- taker orders
+all setups, all            return +26.53%  max drawdown 15.49%  trades  294 (3.3/day)  win 38%  average trade +1.66%
+all setups, 1st half       return +18.49%  max drawdown 14.89%  trades  150 (3.4/day)  win 37%  average trade +1.80%
+all setups, 2nd half       return +13.67%  max drawdown 15.49%  trades  154 (3.5/day)  win 40%  average trade +1.70%
+all setups, 86 windows of 3 days: up in 48%, average +0.56%, median -0.18%, worst -8.46%, best +18.37%
+trend, all                 return +48.75%  max drawdown 17.94%  trades  203 (2.3/day)  win 33%  average trade +2.43%
+trend, 1st half            return +30.87%  max drawdown 17.94%  trades  108 (2.4/day)  win 33%  average trade +3.03%
+trend, 2nd half            return +14.52%  max drawdown 13.18%  trades  102 (2.3/day)  win 32%  average trade +1.51%
+trend, 86 windows of 3 days: up in 44%, average +0.60%, median -0.93%, worst -6.35%, best +18.37%
+mean reversion, all        return  -2.62%  max drawdown 15.86%  trades  206 (2.3/day)  win 47%  average trade +0.05%
+mean reversion, 1st half   return  -1.08%  max drawdown 15.86%  trades  108 (2.4/day)  win 44%  average trade -0.03%
+mean reversion, 2nd half   return  -1.36%  max drawdown 11.89%  trades   99 (2.2/day)  win 51%  average trade +0.16%
+mean reversion, 86 windows of 3 days: up in 51%, average -0.03%, median +0.08%, worst -7.26%, best +7.35%
+--- limit orders
+all setups, all            return +29.34%  max drawdown 16.58%  trades  243 (2.7/day)  win 36%  average trade +1.93%
+all setups, 1st half       return +20.63%  max drawdown 15.13%  trades  115 (2.6/day)  win 37%  average trade +2.22%
+all setups, 2nd half       return  +7.62%  max drawdown 16.14%  trades  130 (2.9/day)  win 37%  average trade +1.18%
+all setups, 86 windows of 3 days: up in 47%, average +0.45%, median -0.65%, worst -7.55%, best +18.98%
+trend, all                 return +34.46%  max drawdown 13.11%  trades  194 (2.2/day)  win 32%  average trade +1.99%
+trend, 1st half            return +16.86%  max drawdown 11.16%  trades  102 (2.3/day)  win 29%  average trade +1.89%
+trend, 2nd half            return  +9.63%  max drawdown 13.02%  trades   96 (2.2/day)  win 34%  average trade +1.38%
+trend, 86 windows of 3 days: up in 42%, average +0.45%, median -1.03%, worst -6.30%, best +18.98%
+mean reversion, all        return  -6.74%  max drawdown 11.75%  trades  169 (1.9/day)  win 48%  average trade -0.07%
+mean reversion, 1st half   return  +0.60%  max drawdown  9.56%  trades   83 (1.9/day)  win 49%  average trade +0.28%
+mean reversion, 2nd half   return  -6.55%  max drawdown 11.73%  trades   86 (1.9/day)  win 48%  average trade -0.35%
+mean reversion, 86 windows of 3 days: up in 50%, average -0.14%, median +0.18%, worst -7.11%, best +5.91%

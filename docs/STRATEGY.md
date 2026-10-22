@@ -76,10 +76,11 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 
 | Test | What | Result |
 |---|---|---|
-| Backtest, 88 days, our 6 markets | trend, limit orders, with the risk check | +36.8%, worst drawdown 7.9%. Both halves positive. (F25) |
-| Backtest, 88 days, 12 other markets | the same rule, never tuned on them | +43.6%, worst drawdown 12.7%. Both halves positive. (F25) |
-| 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 49% of windows. Average +0.87%. Worst -4.2%, best +14.8%. (F28) |
+| Backtest, 88 days, our 6 markets | trend, limit orders, with the risk check | +34.0%, worst drawdown 8.1%. Both halves positive. (F25, fixed spreads F30) |
+| Backtest, 88 days, 12 other markets | the same rule, never tuned on them | +34.5%, worst drawdown 13.1%. Both halves positive. (F25, fixed spreads F30) |
+| 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 49% of windows. Average +0.73%. Worst -4.1%, best +14.7%. (F28) |
 | AI replay | 40 past moments per role | The AI's free choices did not beat the rules (F20, F21, F27). |
+| AI replay, checked veto | the same 40 trend moments | Buys the AI let through: +1.53% each. All trend buys: +1.44%. The 6 it stopped: -0.91%. (F31) |
 
 What this means:
 - The trend rule made money over the last months, on markets it was not chosen on. Much of this comes from the Toman losing value: in these 120 days USDTTMN rose 63% (F24). That may not continue.
@@ -99,4 +100,4 @@ uv run wx shadow             # the shadow book
 uv run pytest                # 100+ tests, no internet
 ```
 
-The backtest and study need no keys. The replay and the live run need the AI settings in `.env`.
+Saved outputs of these runs are in [results/](../results/README.md). The backtest and study need no keys. The replay and the live run need the AI settings in `.env`.

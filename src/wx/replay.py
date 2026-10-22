@@ -2,7 +2,7 @@
 
 For each moment t, features are rebuilt from saved candles that ended by t,
 as `wx decide` would have seen them then. The past order book is not saved,
-so bid and ask are the last close plus and minus half of today's spread. The
+so bid and ask are the last close plus and minus half of a typical spread. The
 AI gets no dates. Then each active setup's trade is played out with trade():
 its own exit rule, the stop, and the costs.
 
