@@ -122,6 +122,11 @@ def test_the_universe_is_every_liquid_market_plus_held_and_context():
     m = {s: {"stats": {"24h_tmnVolume": v}} for s, v in
          (("BIGTMN", "9e9"), ("THINTMN", "1e9"), ("HELDTMN", "1e8"), ("BTCTMN", "2e9"), ("USDTTMN", "3e10"))}
     assert list(liquid(m, held={"HELDTMN"})) == ["USDTTMN", "BIGTMN", "BTCTMN", "HELDTMN"]
+    m["DEEPTMN"] = {"stats": {"24h_tmnVolume": "2e9"}}  # thin by volume, but its book can take our size
+    m["TINYTMN"] = {"stats": {"24h_tmnVolume": "5e8"}}  # under the floor: its book is not even read
+    asked = []
+    picked = liquid(m, held={"HELDTMN"}, book=lambda s: asked.append(s) or s == "DEEPTMN")
+    assert "DEEPTMN" in picked and "THINTMN" not in picked and "TINYTMN" not in asked
 
 
 def test_reasoning_models_get_no_temperature():

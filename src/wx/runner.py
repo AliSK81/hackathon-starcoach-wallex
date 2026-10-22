@@ -32,7 +32,7 @@ from wx.horizon import profile
 from wx.llm_cache import SQLiteLLMCache
 from wx.markets import tmn_volume
 from wx.risk import ENVELOPE
-from wx.universe import liquid, tradable_tmn
+from wx.universe import book_ok, liquid, tradable_tmn
 from wx.wallex import WallexError
 from wx.wallex_mcp import WallexMCP, candle_bars, microstructure
 
@@ -101,7 +101,7 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
         pick = markets
         if universe:
             try:
-                pick = liquid(tradable_tmn(), executor.held())
+                pick = liquid(tradable_tmn(), executor.held(), book=book_ok)
             except WallexError as error:  # keep the full list we started with
                 print(f"Could not refresh the market list: {error}")
                 pick = liquid(markets, executor.held())
