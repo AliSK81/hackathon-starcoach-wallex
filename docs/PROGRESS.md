@@ -481,3 +481,31 @@ Not done yet:
 
 Next change idea:
 - Read the trend veto replay and the shadow cycles. Then look at drawdown: fewer coins at once, or smaller size on volatile coins.
+
+### Change 17 — 3-day windows, the AI's veto checked by code, and the first live shadow fills — 2026-10-22
+Phase: 2 (AI role) and 3 (shadow)
+How to see it: `uv run wx backtest` (last line per policy), `uv run wx run --shadow --role veto`, `uv run wx shadow`
+Proof it works:
+- 3-day windows (F28): trend is up in about half of all 3-day windows. The average is positive (+0.87% on our 6 markets), carried by a few big winners. Over 3 days, no strategy here is reliably profitable.
+- Free AI veto over trend buys (F27): the AI stopped 70% of buys, and the stopped ones did better. So vetoes are now checked by code (D30).
+- Live shadow, first cycles: the AI reviewed 6 markets and explained each one. The risk check approved BTC and ETH at the per-coin cap, shrank XRP to the 60% total cap, and rejected PEPE. The three limit orders filled within 10 minutes.
+- Tested ideas that did not hold up on both market sets are listed in F26 (trailing stop, entry filters).
+- `uv run pytest` passed 108 tests.
+
+Research: none new.
+Questions: none
+Decisions: D30. Facts F26, F27, F28.
+
+Shipped:
+- `veto.py` and the checked veto in the `veto` and `agent` roles.
+- `wx backtest`: 3-day windows from every day.
+- `wx shadow`: the shadow book report.
+- Shadow buys go in order of the AI's confidence.
+
+Not done yet:
+- The checked-veto replay is running.
+- Among the AI's buys, the more confident half did better (+1.73% against -0.28%, 49 buys). Too few to use.
+- The shadow book has run for less than an hour.
+
+Next change idea:
+- Read the checked-veto replay. Let the shadow book run through the night. Then write the doc for judges (Phase 7) with the honest results.
