@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "A bot that trades on Wallex by itself."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "langchain>=1.4.7",
+    "langchain-mcp-adapters>=0.3.2",
+    "langchain-openai>=1.7.2",
+    "langgraph>=1.2.16",
+    "langgraph-checkpoint-sqlite>=3.1.2",
+]
 
 [project.scripts]
 wx = "wx.cli:main"

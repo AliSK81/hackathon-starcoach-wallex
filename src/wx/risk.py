@@ -18,6 +18,9 @@ class Limits:
     halt_hours: float = 24  # after this long in a drawdown halt, the peak resets and buying may start again
     max_data_age_min: float = 5.0  # no buys on stale data
     min_order_tmn: float = 50_000  # Wallex minimum order (F8)
+    grade_b_scale: float = 0.5  # a grade B setup (mixed evidence, setups.py) risks half as much
+    no_entry_hours: float = 3.0  # no new buys this close to the end: a 12-hour setup needs time to work
+    flatten_minutes: float = 30.0  # this close to the end, sell everything into Toman
 
 
 @dataclass(frozen=True)
@@ -37,9 +40,17 @@ class Verdict:
     reason: str
 
 
-def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: Limits = Limits()) -> Verdict:
-    """Size a BUY for one market, or reject it. held_tmn is what we already hold in this market."""
+def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: Limits = Limits(),
+              scale: float = 1.0, hours_left: float | None = None) -> Verdict:
+    """Size a BUY for one market, or reject it. held_tmn is what we already hold in this market.
+
+    scale (0 to 1) lowers the risk per trade: for a grade B setup, and for the AI's conviction.
+    It can only make an order smaller. hours_left is the time to the end of trading, if known.
+    """
     stop_pct = limits.stop_atr * features["atr14_pct"]
+    if hours_left is not None and hours_left < limits.no_entry_hours:
+        reason = f"rejected: {hours_left:.1f} hours left, a new buy needs at least {limits.no_entry_hours:g}"
+        return Verdict(0, stop_pct, "near the end", reason)
     if account.equity < account.day_start * (1 - limits.daily_loss):
         return Verdict(0, stop_pct, "daily loss", f"rejected: lost more than {limits.daily_loss:.0%} today")
     if account.equity < account.peak * (1 - limits.max_drawdown):
@@ -48,7 +59,7 @@ def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: L
     if features["data_age_min"] > limits.max_data_age_min:
         return Verdict(0, stop_pct, "stale data", f"rejected: data is {features['data_age_min']} minutes old")
     caps = {
-        "risk per trade": limits.risk_per_trade * account.equity / (stop_pct / 100),
+        "risk per trade": limits.risk_per_trade * max(0.0, min(scale, 1.0)) * account.equity / (stop_pct / 100),
         "max per coin": limits.max_position * account.equity - held_tmn,
         "max in coins": limits.max_exposure * account.equity - account.exposure,
         "free cash": account.cash,

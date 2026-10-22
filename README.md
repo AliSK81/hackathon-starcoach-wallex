@@ -1,6 +1,6 @@
 # hackathon-starcoach-wallex
 
-A bot that trades on Wallex by itself. An AI agent reviews every trade. Normal code checks the AI, sizes every order, and sets every stop.
+A bot that trades on Wallex by itself. A LangGraph agent studies every trade with tools, trader skills and memory. Normal code checks the AI, sizes every order, and sets every stop.
 
 Start with [docs/STRATEGY.md](docs/STRATEGY.md): how it trades, the AI's role, risk, and results.
 
@@ -16,10 +16,28 @@ This installs the project and prints which keys are set. Copy `.env.example` to 
 
 | Setting | Needed for |
 |---|---|
-| `WALLEX_API_KEY` | `wx account`, round-trip costs, real balances. Read-only is enough until real orders. |
+| `WALLEX_API_KEY` | `wx account`, round-trip costs, real balances. Real orders (`wx agent --live`) need a key that can trade. Never give it withdrawal rights. |
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | Anything that asks the AI: `wx ai`, `wx decide`, `wx run`, `wx replay`. Any OpenAI-compatible API. |
 
-## Trade (shadow)
+## Trade with the agent
+
+```bash
+uv run wx agent --shadow --end-at 2026-10-23T00:30   # fake orders on live data
+uv run wx order-test USDTTMN                          # check real orders: a buy 20% under the price, read back, cancelled
+uv run wx agent --live --end-at 2026-10-23T00:30     # REAL orders
+```
+
+Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRATEGY.md)): features, candidates, the AI analyst with tools (Wallex MCP order book, skills, lessons), the AI risk officer, the code gate and risk check, orders, lessons after closed trades, the log. Between cycles, a guard checks stops every minute. `--end-at` is when trading ends (UTC): no new buys in the last 3 hours, everything sold into Toman 30 minutes before. Options: `--interval`, `--cycles`, `--no-officer`.
+
+| Command | What it does |
+|---|---|
+| `uv run wx live` | The live book: positions, results, reasons. |
+| `uv run wx kill` | Kill switch: cancel every open order and sell every position. |
+| `uv run wx shadow` | The older shadow book (`wx run --shadow`). |
+
+Memory lives in `data/brain/` (SQLite). The live book is `data/live/book.json`, and every order event is in `data/live/orders.jsonl`.
+
+## Trade (older loop, shadow)
 
 ```bash
 uv run wx run --shadow
@@ -40,6 +58,7 @@ uv run wx tradelog > results/trade_log.md # per-trade log: setup, AI reason, ris
 |---|---|---|
 | `uv run wx candles` | Saves 120 days of 1-minute and 1-hour candles to `data/candles/`. Later runs add only what is missing. | nothing |
 | `uv run wx backtest` | Trades 5,000,000 TMN hour by hour over the saved history, with the risk check. Each policy, taker and limit orders, each half, and 3-day windows. | candles |
+| `uv run wx backtest --hours 12` | A fresh book every 6 hours, trading the agent's setups for 12 hours, then sold into Toman. | candles |
 | `uv run wx study` | Each buy setup on its own, with its exit rule and several stops. | candles |
 | `uv run wx replay` | Asks the AI about 40 past moments, and compares its buys with the same rules without the AI. `--role`, `--moments`, `--seed`. | candles, AI |
 | `uv run wx replay --from results/replay_trend_agent.jsonl` | The summary of a saved replay, without asking the AI. | nothing |
@@ -61,7 +80,7 @@ Saved outputs are in [results/](results/README.md). Markets can be named after a
 ## Tests
 
 ```bash
-uv run pytest                 # about 120 tests, no internet
+uv run pytest                 # about 140 tests, no internet
 uvx ruff check src tests      # lint
 ```
 

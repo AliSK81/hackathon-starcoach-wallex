@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
 from wx.agent import review_tools
-from wx.backtest import scenarios
+from wx.backtest import scenarios, short_scenarios
 from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, candle_path, last_close, update_candles
 from wx.config import KEYS, Settings
@@ -222,6 +222,100 @@ def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int 
     return 0
 
 
+def live_executor(markets: dict[str, dict], settings: Settings, end_at: int | None = None):
+    """The real-order executor, or None without a Wallex key."""
+    from wx.live import LiveExecutor
+    from wx.orders import Trader
+    key = settings.get("WALLEX_API_KEY")
+    if not key:
+        print("Missing in .env: WALLEX_API_KEY")
+        return None
+    rules = {s: MarketRules.from_wallex(info) for s, info in markets.items()}
+    return LiveExecutor(Trader(key), key, rules, DATA_DIR, end_at=end_at)
+
+
+def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | None, interval: int,
+              cycles: int | None, officer: bool) -> int:
+    """`wx agent`: the LangGraph agent on a beat, with a fake book (--shadow) or real orders (--live)."""
+    from wx.execution import ShadowExecutor
+    from wx.runner import make_brain, open_memory, parse_end, run
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    end = parse_end(end_at)
+    executor = live_executor(markets, settings, end) if live else ShadowExecutor(DATA_DIR)
+    if executor is None:
+        return 1
+    name = "live" if live else "shadow"
+    saver, store = open_memory(DATA_DIR, name)
+    brain = make_brain(markets, settings, DATA_DIR, executor, end, store, officer)
+    ends = datetime.fromtimestamp(end, UTC).strftime("%Y-%m-%d %H:%M UTC") if end else "never"
+    print(f"Agent on {' '.join(markets)}, every {interval} s, {name.upper()} orders, trading ends {ends}. "
+          f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
+    return run(brain, DATA_DIR, name, interval, cycles, saver)
+
+
+def run_live_report() -> int:
+    """The live book from data/live/book.json, without calling Wallex."""
+    path = DATA_DIR / "live" / "book.json"
+    if not path.is_file():
+        print("No live book yet.")
+        return 0
+    book = json.loads(path.read_text(encoding="utf-8"))
+    for p in book["positions"]:
+        print(f"  {p['status']:<9} {p['symbol']:<9} {p['setup']:<15} {p['tmn']:>12,.0f} TMN  entry {p['entry']}  "
+              f"net {p['net_pct']}  {p['sell_reason']} {p['note']}")
+    print(f"Peak equity {book.get('peak')}. Positions: {len(book['positions'])}.")
+    return 0
+
+
+def run_kill(symbols: list[str], settings: Settings) -> int:
+    """The kill switch: cancel every open order and sell every position of the live book."""
+    markets = pick_markets(symbols)
+    executor = live_executor(markets, settings) if markets else None
+    if executor is None:
+        return 1
+    result = executor.kill(int(time.time()))
+    print(json.dumps(result, indent=1, default=str))
+    return 0 if not result["still_active"] else 1
+
+
+def run_order_test(symbol: str, settings: Settings) -> int:
+    """Check real order placement without buying: a minimum buy 20% under the price, read back, then cancelled."""
+    from decimal import Decimal
+
+    from wx.orders import Trader, new_client_id
+    from wx.wallex import fetch_best_prices
+    markets = pick_markets([symbol])
+    key = settings.get("WALLEX_API_KEY")
+    if not markets or not key:
+        print("Need an allowed market and WALLEX_API_KEY.")
+        return 1
+    rules = MarketRules.from_wallex(markets[symbol.upper()])
+    bid, _ = fetch_best_prices(rules.symbol)
+    price = rules.round_price(bid * Decimal("0.8"), "BUY")
+    qty = rules.round_qty(rules.min_notional * Decimal("1.2") / price) + rules.min_qty
+    trader, cid = Trader(key), new_client_id("test")
+    print(f"Placing LIMIT BUY {qty} {rules.symbol} at {price} (20% under the bid, so it should not fill), id {cid}")
+    try:
+        placed = trader.place(rules.symbol, "BUY", qty, price, cid)
+        print(f"  placed: status {placed.status}, active {placed.active}")
+        read = trader.get(cid)
+        print(f"  read back: {read}")
+        print(f"  open orders: {[o.client_id for o in trader.open_orders()]}")
+    except WallexError as error:
+        print(f"  failed: {error}")
+        return 1
+    finally:
+        try:
+            print(f"  cancelled: {trader.cancel(cid)}")
+        except WallexError as error:
+            print(f"  cancel failed, cancel it on the website: {error}")
+    return 0
+
+
 # Taker fee on TMN markets (DECISIONS F3), used by `wx replay` if fees can't be read.
 TMN_TAKER_FEE = 0.003
 
@@ -244,13 +338,14 @@ def run_study(symbols: list[str], settings: Settings, stops: list[float]) -> int
     return 0
 
 
-def run_backtest(symbols: list[str], settings: Settings) -> int:
+def run_backtest(symbols: list[str], settings: Settings, hours: int | None = None) -> int:
     markets = pick_markets(symbols)
     if markets is None:
         return 1
     histories, spreads, fees = past_inputs(markets, settings)
     print("Rebuilding the features at every past hour ...")
-    print(scenarios(scan(histories, spreads, fees), histories))
+    rows = scan(histories, spreads, fees)
+    print(short_scenarios(rows, histories, spreads, hours) if hours else scenarios(rows, histories))
     return 0
 
 
@@ -369,7 +464,9 @@ def main(argv: list[str] | None = None) -> int:
     command("tradelog", "the per-trade decision log of the shadow book, as a Markdown table", symbols=False)
     command("rules", "show decimals and minimum order size per market")
     command("features", "indicators per market, from candles and the live book")
-    command("backtest", "trade 5,000,000 TMN over the saved history, rules only")
+    command("backtest", "trade 5,000,000 TMN over the saved history, rules only").add_argument(
+        "--hours", type=int, default=None, help="instead: short windows of this many hours (the agent's setups), "
+        "each sold into Toman at its end, e.g. --hours 12")
     command("candles", "save 1-minute and 1-hour candles").add_argument(
         "--days", type=int, default=KEEP_DAYS, help=f"how far back to keep (default {KEEP_DAYS})")
     beat(command("watch", "read live prices on a fixed beat and log them"), 60)
@@ -383,6 +480,18 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--shadow", action="store_true", help="trade a fake book with the risk check")
         if name == "run":
             beat(sub, DECIDE_EVERY)
+    agent = command("agent", "the LangGraph trading agent on a beat: tools, skills, memory, risk check, orders")
+    mode = agent.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--shadow", action="store_true", help="trade a fake book on live data")
+    mode.add_argument("--live", action="store_true", help="place REAL orders on Wallex")
+    agent.add_argument("--end-at", default=None, help="when trading ends, e.g. 2026-10-23T00:30 (UTC unless a zone "
+                       "is given). No new buys in the last 3 hours, everything sold 30 minutes before.")
+    agent.add_argument("--no-officer", action="store_true", help="skip the risk officer AI (faster cycles)")
+    beat(agent, DECIDE_EVERY)
+    command("live", "show the live book (no Wallex call)", symbols=False)
+    command("kill", "KILL SWITCH: cancel every open order and sell every live position")
+    command("order-test", "place a minimum buy 20%% under the price, read it back, cancel it", symbols=False
+            ).add_argument("symbol", nargs="?", default="USDTTMN")
     replayer = command("replay", "ask the AI about past moments and see what happened next")
     ai_role(replayer)
     replayer.add_argument("--moments", type=int, default=40, help="how many past moments (default 40)")
@@ -406,12 +515,17 @@ def main(argv: list[str] | None = None) -> int:
         "tradelog": lambda: print(trade_table(trades(DATA_DIR))) or 0,
         "rules": lambda: run_rules(a.symbols),
         "features": lambda: run_features(a.symbols, Settings.load()),
-        "backtest": lambda: run_backtest(a.symbols, Settings.load()),
+        "backtest": lambda: run_backtest(a.symbols, Settings.load(), a.hours),
         "candles": lambda: run_candles(a.symbols, a.days),
         "watch": lambda: run_watch(a.symbols, a.interval, a.cycles),
         "study": lambda: run_study(a.symbols, Settings.load(), a.stops),
         "decide": lambda: run_decide(a.symbols, Settings.load(), a.role, a.shadow),
         "run": lambda: run_loop(a.symbols, Settings.load(), a.interval, a.cycles, a.role, a.shadow),
+        "agent": lambda: run_agent(a.symbols, Settings.load(), a.live, a.end_at, a.interval, a.cycles,
+                                   not a.no_officer),
+        "live": lambda: run_live_report(),
+        "kill": lambda: run_kill(a.symbols, Settings.load()),
+        "order-test": lambda: run_order_test(a.symbol, Settings.load()),
         "replay": lambda: run_replay_cmd(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,
                                          a.any_time, a.role, a.saved),
     }

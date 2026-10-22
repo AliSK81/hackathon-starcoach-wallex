@@ -46,6 +46,9 @@ FEATURES = {
     "atr14_pct": "1h ATR 14, the usual size of one hour's move, % of price",
     "atr_pctile_100": "where ATR 14 % sits among the last 100 hours, 0 (calmest) to 1 (wildest)",
     "zscore_48h": "last 1h close minus its 48-hour average, in standard deviations",
+    "bb_z_20": "last 1h close minus its 20-hour average, in 20-hour standard deviations (below -2 is a deep dip)",
+    "trend_4h_pct": "4h EMA 20 above (+) or below (-) the 4h EMA 50, %: the slower trend",
+    "rsi14_15m": "15-minute RSI 14, the short-term push",
     "bb_pos_20": "last 1h close inside the Bollinger bands (20, 2): 0 = lower band, 1 = upper band",
     "donchian20_pos": "last 1h close inside the previous 20 hours' low-high range: 0 = low, 1 = high",
     "breakout_up": "true if the last 1h close is above the previous 20 hours' high",
@@ -53,6 +56,8 @@ FEATURES = {
     "zero_volume_hours_24": "hours with no trades in the last 24",
     "regime": "trend_up / trend_down (ADX above 25), range (ADX below 20), or transition",
     "data_age_min": "minutes since the newest saved 1-minute candle started",
+    "usdt_trend_up": "true if USDTTMN's 1h EMA 20 is above its EMA 50: the Toman is weakening (null if unknown)",
+    "btc_ret_24h_pct": "BTCTMN's price change over the last 24 hours, %: the whole market's mood (null if unknown)",
     "setups": "buy setups whose rule holds now (see setup_meanings). A BUY must name one of these",
 }
 
@@ -115,6 +120,11 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
     else:
         regime = "transition"
 
+    # Slower and faster views: every 4th hourly close, and every 15th minute close, ending with the newest.
+    closes_4h = closes[::-4][::-1]
+    ema20_4h, ema50_4h = ind.ema(closes_4h, 20), ind.ema(closes_4h, 50)
+    rsi_15m = ind.rsi([m[4] for m in minutes[::-15]][::-1], 14)
+
     features = {
         "price": price,
         "spread_pct": round(spread_pct, 3),
@@ -137,6 +147,9 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
         "atr14_pct": rnd(atr_pct[-1], 3),
         "atr_pctile_100": rnd(ind.percent_rank(atr_pct, 100), 2),
         "zscore_48h": rnd(ind.zscore(closes, 48), 2),
+        "bb_z_20": rnd((last - mean20) / sd20, 2) if sd20 else 0.0,
+        "trend_4h_pct": pct(ema20_4h[-1], ema50_4h[-1]) if ema50_4h[-1] else None,
+        "rsi14_15m": rnd(rsi_15m[-1], 1),
         "bb_pos_20": rnd((last - (mean20 - 2 * sd20)) / band, 2) if band else 0.5,
         "donchian20_pos": rnd((last - low20) / (high20 - low20), 2) if high20 > low20 else 0.5,
         "breakout_up": last > high20,
@@ -144,9 +157,27 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
         "zero_volume_hours_24": sum(v == 0 for v in volumes[-24:]),
         "regime": regime,
         "data_age_min": round((now - minutes[-1][0]) / 60, 1),
+        "usdt_trend_up": None,
+        "btc_ret_24h_pct": None,
     }
     features["setups"] = active(features)
     return features
+
+
+def add_context(table: dict[str, dict]) -> dict[str, dict]:
+    """Copy the whole-market facts into every market, then check the setups again.
+
+    The Toman's own trend (USDTTMN) and BTC's day tell every market something:
+    coin trend buys did worse while the Toman was getting stronger (F41).
+    """
+    usdt, btc = table.get("USDTTMN"), table.get("BTCTMN")
+    for f in table.values():
+        if usdt and usdt.get("ema20_vs_ema50_pct") is not None:
+            f["usdt_trend_up"] = usdt["ema20_vs_ema50_pct"] > 0
+        if btc:
+            f["btc_ret_24h_pct"] = btc.get("ret_24h_pct")
+        f["setups"] = active(f)
+    return table
 
 
 def market_features(symbol: str, data_dir: Path, taker_fee: float | None = None, now: int | None = None) -> dict:

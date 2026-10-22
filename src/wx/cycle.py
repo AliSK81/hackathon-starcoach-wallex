@@ -65,7 +65,7 @@ def collect_features(symbols, settings: Settings, data_dir: Path) -> tuple[dict[
     for symbol in symbols:
         try:
             table[symbol] = market_features(symbol, data_dir, fees.get(symbol))
-        except (WallexError, ValueError) as error:
+        except (WallexError, ValueError, OSError) as error:  # OSError: a candle file busy in another process
             errors[symbol] = str(error)
             print(f"  {symbol}: failed. {error}")
     return table, errors

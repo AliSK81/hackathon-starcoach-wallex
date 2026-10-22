@@ -7,6 +7,7 @@ from wx.decide import build_messages, check_answer, decide, holdings, log_decisi
 from wx.features import FEATURES
 from wx.llm import LLMError, Reply
 from wx.rules import MarketRules
+from wx.setups import SETUPS
 
 KEY = "sk-secret-key-value"
 
@@ -133,7 +134,7 @@ def test_prompt_has_meanings_markets_and_cash():
     facts = json.loads(user["content"])
     assert system["role"] == "system" and "JSON" in system["content"]
     assert facts["feature_meanings"] == FEATURES and facts["markets"] == TABLE
-    assert set(facts["setup_meanings"]) == {"trend", "sharp_drop", "oversold"}
+    assert set(facts["setup_meanings"]) == set(SETUPS)
     assert facts["market_names"] == ["BTCTMN", "ETHTMN"]
     assert facts["cash_tmn"] == "unknown" and facts["held"] == {}
 

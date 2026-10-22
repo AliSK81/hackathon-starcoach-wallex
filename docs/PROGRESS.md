@@ -616,3 +616,31 @@ Not done yet:
 
 Next change idea:
 - Phase 4 plan, once the trading key is in `.env`. Until then, keep the shadow book running.
+
+### Change 22 — a LangGraph agent with tools, skills and memory, 12-hour setups, and real orders — 2026-10-22
+Phase: 4 (first real orders), 2 and 6 (the AI and tests on the past), 7 (docs)
+How to see it: `uv run wx agent --shadow --end-at <end>`, `uv run wx backtest --hours 12`, `uv run pytest`
+Proof it works:
+- The agent graph ran live in shadow: 8 to 10 tool calls a cycle, including the order book from the Wallex MCP server, skills and lessons (F47). It placed a fake buy that code sized.
+- Over 12 hours, no simple rule beat its costs (F41, F42). Holding USDT and trading USDT pairs did worse than TMN pairs (D34). The new setups lose less than the old trend rule in 12-hour windows, with a smaller worst case (F45).
+- No arbitrage between TMN and USDT books (F43). Most of the Toman drift comes in Tehran daytime (F44).
+- `uv run pytest` passed 141 tests, including the agent graph with a fake AI and the live executor with a fake Wallex. `uvx ruff check src tests` is clean.
+
+Research: research files 01, 05c and 08 (agent frameworks, the Wallex MCP server, skills and memory patterns).
+Questions: the user asked for a real agent (framework, tools, skills, memory, learning), USDT trading, and a strategy that knows when trading ends.
+Decisions: D32 to D37. Facts F41 to F47.
+
+Shipped:
+- `brain.py`: the LangGraph graph. Analyst agent (`create_agent` with tool-limit and tool-retry middleware), risk officer, code gate, act, reflect, journal. SQLite checkpointer (short-term memory) and SQLite store (long-term memory).
+- `skills/`: 8 trader playbooks the AI reads with a tool.
+- `wallex_mcp.py`: the official Wallex MCP server for the order book and the latest trades, read only, with a REST fallback.
+- `setups.py`: 4 setups for a 12-hour horizon, with grades. `features.py`: 5 new features (20-hour z-score, 4h trend, 15-minute RSI, the Toman's trend, BTC's day).
+- `orders.py`, `live.py`, `execution.py`: real orders, the guard, the kill switch, selling everything before the end.
+- `wx agent`, `wx live`, `wx kill`, `wx order-test`, `wx backtest --hours 12`. Study scripts in `scripts/`.
+
+Not done yet:
+- A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.
+- The agent has no AI replay over past moments yet. Its live shadow log is the evidence so far.
+
+Next change idea:
+- Start live trading with the agent. Keep the shadow agent running next to it for comparison.

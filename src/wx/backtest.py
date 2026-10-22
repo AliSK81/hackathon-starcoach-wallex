@@ -11,10 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from statistics import mean
 
+from wx.features import add_context
 from wx.replay import Lookup
 from wx.risk import Account, Limits, check_buy, update_peak
+from wx.setups import SETUPS, SHORT_SETUPS
 from wx.study import lookup_from
-from wx.trades import History, Trade, trade
+from wx.trades import MAKER_FEE_PCT, TAKER_FEE_PCT, History, Trade, trade
 
 START_TMN = 5_000_000
 
@@ -59,7 +61,7 @@ class Result:
 
 
 def run(rows: list[dict], histories: dict[str, History], policy: Policy, limits: Limits = Limits(),
-        orders: str = "taker", lookup: Lookup | None = None) -> Result:
+        orders: str = "taker", lookup: Lookup | None = None, graded: bool = False) -> Result:
     """Trade the policy over the scanned hours (see study.scan), with "taker" or "limit" orders.
 
     lookup gives features for the exits. By default it covers the same rows. Give a wider
@@ -83,7 +85,9 @@ def run(rows: list[dict], histories: dict[str, History], policy: Policy, limits:
         table = hours[t]
         for symbol, setup in policy(t, table, {p.symbol for p in open_}):
             f = table[symbol]
-            verdict = check_buy(f, Account(equity, cash, sum(p.tmn for p in open_), peak, day_start), limits=limits)
+            scale = limits.grade_b_scale if graded and SETUPS[setup].grade == "B" else 1.0
+            verdict = check_buy(f, Account(equity, cash, sum(p.tmn for p in open_), peak, day_start), limits=limits,
+                                scale=scale)
             if not verdict.tmn:
                 rejected[verdict.rule] += 1
                 continue
@@ -130,6 +134,71 @@ def windows(rows: list[dict], histories: dict[str, History], policy: Policy, ord
     return (f"{len(returns)} windows of {days} days: up in {sum(r > 0 for r in returns) / len(returns):.0%}, "
             f"average {mean(returns):+.2f}%, median {returns[len(returns) // 2]:+.2f}%, "
             f"worst {returns[0]:+.2f}%, best {returns[-1]:+.2f}%")
+
+
+def with_context(rows: list[dict]) -> list[dict]:
+    """Add the whole-market facts (the Toman's trend, BTC's day) to every row, hour by hour, as live trading does."""
+    hours = defaultdict(dict)
+    for row in rows:
+        hours[row["t"]][row["symbol"]] = row["features"]
+    for table in hours.values():
+        add_context(table)
+    return rows
+
+
+def value_at(result: Result, histories: dict[str, History], end: int, spreads: dict[str, float]) -> float:
+    """The book's Toman value at `end`, as if every open position were sold then (taker fee and half the spread)."""
+    value = START_TMN
+    for p in result.trades:
+        if p.trade.exit_t is not None and p.trade.exit_t <= end:
+            value += p.tmn * p.trade.net_pct / 100
+        else:
+            exit_cost = MAKER_FEE_PCT + TAKER_FEE_PCT + spreads.get(p.symbol, 0.3) / 2
+            value += p.tmn * ((histories[p.symbol].close_at(end) / p.trade.entry - 1) * 100 - exit_cost) / 100
+    return value
+
+
+def short_windows(rows: list[dict], histories: dict[str, History], names: tuple[str, ...], spreads: dict[str, float],
+                  hours: int = 12, step_hours: int = 6, graded: bool = True, limits: Limits = Limits(),
+                  lookup: Lookup | None = None) -> tuple[str, list[float]]:
+    """A fresh book every `step_hours`, trading for `hours`, then sold into Toman: what the contest measures.
+
+    No new buys in the last limits.no_entry_hours of a window, as in live trading.
+    """
+    lookup = lookup or lookup_from(rows)
+    times = sorted({r["t"] for r in rows})
+    returns, trades = [], 0
+    for start in range(times[0], times[-1] - hours * 3600, step_hours * 3600):
+        end = start + hours * 3600
+        part = [r for r in rows if start <= r["t"] < end - limits.no_entry_hours * 3600]
+        result = run(part, histories, setups_policy(names), limits, "limit", lookup, graded)
+        returns.append((value_at(result, histories, end, spreads) / START_TMN - 1) * 100)
+        trades += len(result.trades)
+    if not returns:
+        return "too little history", []
+    r = sorted(returns)
+    line = (f"{len(r)} windows of {hours} h: up in {sum(x > 0 for x in r) / len(r):.0%}, flat (no trade) in "
+            f"{sum(x == 0 for x in r) / len(r):.0%}, average {mean(r):+.2f}%, median {r[len(r) // 2]:+.2f}%, "
+            f"worst {r[0]:+.2f}%, best {r[-1]:+.2f}%, {trades / len(r):.1f} trades a window")
+    return line, returns
+
+
+def short_scenarios(rows: list[dict], histories: dict[str, History], spreads: dict[str, float],
+                    hours: int = 12) -> str:
+    """The agent's setups (and the old trend rule) over short windows, all history and each half."""
+    rows = with_context(rows)
+    lookup = lookup_from(rows)
+    middle = sorted(r["t"] for r in rows)[len(rows) // 2]
+    periods = {"all": rows, "1st half": [r for r in rows if r["t"] < middle],
+               "2nd half": [r for r in rows if r["t"] >= middle]}
+    lines = [f"--- {hours}-hour windows, limit orders, sold into Toman at the end of each window"]
+    for name, setups, graded in (("agent setups (graded)", SHORT_SETUPS, True),
+                                 ("dip setups only", ("capitulation", "stretched_dip", "dip_toman_weak"), True),
+                                 ("trend (old rule)", ("trend",), False)):
+        for period, part in periods.items():
+            line, _ = short_windows(part, histories, setups, spreads, hours, graded=graded, lookup=lookup)
+            lines.append(f"{name}, {period}: {line}")
+    return "\n".join(lines)
 
 
 # Rules-only policies to compare.

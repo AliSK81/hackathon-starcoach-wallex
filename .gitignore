@@ -9,3 +9,5 @@ __pycache__/
 
 # Saved market data
 data/
+
+.venv-dev/

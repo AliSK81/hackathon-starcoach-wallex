@@ -23,6 +23,12 @@ VETOES: dict[str, tuple[str, Callable[[dict, dict], bool]]] = {
         "BTCTMN fell 5% or more in the last 24 hours",
         lambda f, table: ((table.get("BTCTMN") or {}).get("ret_24h_pct") or 0) <= -5,
     ),
+    "sell_pressure": (
+        "sellers dominate the live market: buy_share under 0.35 and imbalance_1pct under -0.3 (from the order book "
+        "and the latest trades; only known when the agent read them)",
+        lambda f, table: f.get("buy_share") is not None and f["buy_share"] < 0.35
+        and (f.get("imbalance_1pct") or 0) < -0.3,
+    ),
 }
 
 

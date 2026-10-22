@@ -49,7 +49,7 @@ def test_veto_role_prompt_lists_the_vetoes_and_code_checks_them():
         return Reply(json.dumps(answer), "m1", 1.0)
 
     record = decide({"XTMN": QUIET}, 5_000_000, {}, ask, "veto")
-    assert set(seen["facts"]["veto_meanings"]) == {"illiquid", "stale_data", "market_crash"}
+    assert set(seen["facts"]["veto_meanings"]) == {"illiquid", "stale_data", "market_crash", "sell_pressure"}
     d = record["decisions"][0]
     assert d["action"] == "BUY" and "veto 'illiquid' overruled" in d["problems"][0]
 

@@ -5,6 +5,7 @@ to the file. The newest candle may still be open; the next run replaces it.
 """
 
 import csv
+import os
 import time
 from pathlib import Path
 
@@ -54,12 +55,20 @@ def load_candles(path: Path) -> dict[int, list]:
 
 def save_candles(path: Path, candles: dict[int, list]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")  # one per process: two bots may save the same market
     with tmp.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(COLUMNS)
         writer.writerows(candles[t] for t in sorted(candles))
-    tmp.replace(path)
+    for attempt in range(10):  # on Windows the file can't be replaced while another process reads it
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.2)
 
 
 def windows(start: int, end: int, span: int) -> list[tuple[int, int]]:
