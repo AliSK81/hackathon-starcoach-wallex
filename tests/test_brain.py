@@ -213,9 +213,9 @@ def test_every_skill_has_a_description():
 
 def test_the_pace_follows_the_time_left():
     from wx.horizon import profile
-    assert profile(10).name == "sprint" and profile(10).cycle_seconds == 300
+    assert profile(6).name == "sprint" and profile(6).cycle_seconds == 300 and profile(18).name == "short"
     assert profile(72).name == "short" and profile(24 * 30).name == "swing" and profile(None).name == "swing"
-    b, _ = brain([plan([buy(max_hours=40)])], {"SOLTMN": market()}, end_at=NOW + 10 * 3600)
+    b, _ = brain([plan([buy(max_hours=40)])], {"SOLTMN": market()}, end_at=NOW + 6 * 3600)
     state = build_graph(b).invoke({})
     assert state["profile"]["name"] == "sprint" and state["decisions"][0]["max_hours"] == 6.0  # sprint holds
     assert b.executor.bought[0][3]["fill_minutes"] == 10

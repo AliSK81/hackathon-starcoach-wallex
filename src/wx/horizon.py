@@ -28,10 +28,13 @@ SHORT = Profile("short", 900, "15-minute and 1-hour candles", "hours to two days
 SWING = Profile("swing", 1800, "1-hour and 4-hour candles", "a day to a week", 168, 60, "trend-following")
 
 
+SPRINT_HOURS = 8  # sprint only at the very end: the setups with an edge need holds up to 12 hours (D52)
+
+
 def profile(hours_left: float | None) -> Profile:
     if hours_left is None:
         return SWING
-    if hours_left <= 24:
+    if hours_left <= SPRINT_HOURS:
         return SPRINT
     if hours_left <= 7 * 24:
         return SHORT
