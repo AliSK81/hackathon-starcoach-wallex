@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 2 and 3 together (the strategy changed in change 16)
+- **Current phase:** 3 (shadow running). Phase 2 done. Phases 6 and 7 started early, because they do not need a trading key.
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
