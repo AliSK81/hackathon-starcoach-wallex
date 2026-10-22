@@ -10,9 +10,9 @@
 
 Update this after every change.
 
-- **Current phase:** 4, waiting for a trading key. Phases 2 and 3 done. Phases 6 and 7 in progress. The shadow book keeps running.
+- **Current phase:** 4 ends with `wx order-test`, then 5 (a 24-hour live run, D46). Phases 2 and 3 done. Phases 6 and 7 in progress.
 - **Live trading:** not live yet
-- **Version trading live:** none yet
+- **Version trading live:** `live-1` (ready, not started yet)
 
 ### What we need from the team
 
@@ -21,7 +21,7 @@ Update this after every change.
 | Wallex key (read) in `.env` | Phase 1 | Works (F1). |
 | AI provider, model, URL, and key in `.env` | Phase 2 | Works (F11). |
 | A computer that can reach Wallex and the AI and run without stopping | Phase 3 | Unknown |
-| Wallex key that can trade but **cannot** withdraw | Phase 4 | Waiting |
+| Wallex key that can trade but **cannot** withdraw | Phase 4 | In `.env`. `wx order-test` shows if it can trade. |
 | Which account is the competition account | Phase 4 | Done: the account behind `WALLEX_API_KEY` (D14). |
 
 ## How to work on the next change
@@ -769,3 +769,20 @@ Proof it works:
 Research: the installed trading skills, research file 06 (fee break-even).
 Questions: the user asked for faster trading and shorter-term analysis when the trading time is short.
 Decisions: D45. Fact F62.
+
+### Change 29 — ready for the live run — 2026-10-22
+Phase: 4 and 5
+How to see it: `uv run wx kill --help`, `uv run wx verify-log --live`, `uv run wx tradelog --live`, `scripts/keep_running.py`
+Proof it works:
+- The kill switch with no markets named reads every allowed TMN market. Before, it knew only the 6 default markets, so a position in another market (the agent trades about 20) could not be sold.
+- Live decisions are logged in `data/live/decisions/`. The shadow run writes `data/decisions/`, so the two never share one hash chain.
+- `wx tradelog --live` joins live orders with the decisions that placed them. A test covers it.
+- The supervisor saves the agent's output itself (`data/brain/live_run.log`), in UTF-8, so the start command is the same in any shell.
+- `uv run pytest` passed 163 tests. No AI call was made.
+
+Research: none new.
+Questions: the user asked for 24 hours of live trading, and for no AI calls in tests.
+Decisions: D46.
+
+Not done yet:
+- `wx order-test` and the start of the live run.

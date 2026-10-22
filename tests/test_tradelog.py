@@ -30,3 +30,20 @@ def test_no_orders_gives_an_empty_table(tmp_path):
     (tmp_path / "decisions").mkdir()
     assert trades(tmp_path) == []
     assert table([]).count("\n") == 1
+
+
+def test_live_orders_are_joined_with_the_live_decisions(tmp_path):
+    live = tmp_path / "live"
+    (live / "decisions").mkdir(parents=True)
+    events = [{"t": T0, "event": "buy placed", "symbol": "SOLTMN", "setup": "trend_strong", "tmn": 500_000,
+               "status": "buying", "rule": "risk"},
+              {"t": T0, "event": "closed", "symbol": "SOLTMN", "setup": "trend_strong", "tmn": 500_000,
+               "status": "closed", "entry": 100.0, "sell_reason": "stop", "net_pct": -1.2},
+              {"t": T0 + 60, "event": "kill", "cancelled": []}]
+    (live / "orders.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
+    decision = {"time": "2023-11-14T22:14:00+00:00", "decided_at": T0, "executor": "live", "decisions": [
+        {"symbol": "SOLTMN", "action": "BUY", "conviction": 0.7, "reason": "fresh push"}]}
+    (live / "decisions" / "d.jsonl").write_text(json.dumps(decision) + "\n", encoding="utf-8")
+    [row] = trades(tmp_path, live=True)
+    assert (row["confidence"], row["status"], row["exit"], row["net_pct"]) == (0.7, "closed", "stop", -1.2)
+    assert trades(tmp_path) == []  # the shadow log is separate

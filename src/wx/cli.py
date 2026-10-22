@@ -238,7 +238,7 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
               cycles: int | None, officer: bool) -> int:
     """`wx agent`: the LangGraph agent on a beat, with a fake book (--shadow) or real orders (--live)."""
     from wx.execution import ShadowExecutor
-    from wx.runner import make_brain, open_memory, parse_end, run
+    from wx.runner import log_dir, make_brain, open_memory, parse_end, run
     if missing_ai_settings(settings):
         return 1
     universe = not symbols  # no markets named: every liquid allowed TMN market, picked again each cycle
@@ -267,7 +267,7 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
     pace = profile(None if end is None else (end - time.time()) / 3600)
     print(f"Agent on {where}, {name.upper()} orders, trading ends {ends}. Pace now: {pace.name}, a decision every "
           f"{min(interval, pace.cycle_seconds)} s (it speeds up as the end comes closer). "
-          f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
+          f"Log: {log_dir(DATA_DIR, name) / 'decisions'}. Ctrl+C stops.")
     return run(brain, DATA_DIR, name, interval, cycles, saver)
 
 
@@ -292,10 +292,11 @@ def run_agent_replay(symbols: list[str], settings: Settings, moments: int, days:
     return 0
 
 
-def run_verify_log(day: str | None) -> int:
+def run_verify_log(day: str | None, live: bool) -> int:
     """Check the hash chain of the agent's decision log for one UTC day (default: today)."""
     from wx.decide import verify_chain
-    path = DATA_DIR / "decisions" / f"{day or f'{datetime.now(UTC):%Y-%m-%d}'}.jsonl"
+    base = DATA_DIR / "live" if live else DATA_DIR
+    path = base / "decisions" / f"{day or f'{datetime.now(UTC):%Y-%m-%d}'}.jsonl"
     if not path.is_file():
         print(f"No log at {path}")
         return 1
@@ -321,8 +322,18 @@ def run_live_report() -> int:
 
 
 def run_kill(symbols: list[str], settings: Settings) -> int:
-    """The kill switch: cancel every open order and sell every position of the live book."""
-    markets = pick_markets(symbols)
+    """The kill switch: cancel every open order and sell every position of the live book.
+
+    With no markets named it knows every allowed TMN market, like the agent, so no position is left unsold."""
+    if symbols:
+        markets = pick_markets(symbols)
+    else:
+        from wx.universe import tradable_tmn
+        try:
+            markets = tradable_tmn()
+        except WallexError as error:
+            print(f"Could not read markets: {error}")
+            return 1
     executor = live_executor(markets, settings) if markets else None
     if executor is None:
         return 1
@@ -510,7 +521,8 @@ def main(argv: list[str] | None = None) -> int:
     command("account", "read balances and fees (needs WALLEX_API_KEY)", symbols=False)
     command("ai", "check the AI settings with one small call", symbols=False)
     command("shadow", "show the shadow book: cash, open orders, closed trades", symbols=False)
-    command("tradelog", "the per-trade decision log of the shadow book, as a Markdown table", symbols=False)
+    command("tradelog", "the per-trade decision log, as a Markdown table", symbols=False).add_argument(
+        "--live", action="store_true", help="the live book (default: the shadow book)")
     command("rules", "show decimals and minimum order size per market")
     command("features", "indicators per market, from candles and the live book")
     command("backtest", "trade 5,000,000 TMN over the saved history, rules only").add_argument(
@@ -544,8 +556,9 @@ def main(argv: list[str] | None = None) -> int:
     areplay.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
     areplay.add_argument("--workers", type=int, default=3, help="moments at the same time (default 3)")
     areplay.add_argument("--from", dest="saved", type=Path, default=None, help="summarize a saved replay log")
-    command("verify-log", "check the hash chain of the agent's decision log", symbols=False).add_argument(
-        "day", nargs="?", default=None, help="UTC day, e.g. 2026-10-22 (default today)")
+    verify = command("verify-log", "check the hash chain of the agent's decision log", symbols=False)
+    verify.add_argument("day", nargs="?", default=None, help="UTC day, e.g. 2026-10-22 (default today)")
+    verify.add_argument("--live", action="store_true", help="the live log (default: the shadow log)")
     command("kill", "KILL SWITCH: cancel every open order and sell every live position")
     command("order-test", "place a minimum buy 20%% under the price, read it back, cancel it", symbols=False
             ).add_argument("symbol", nargs="?", default="USDTTMN")
@@ -569,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
         "account": lambda: run_account(Settings.load()),
         "ai": lambda: run_ai(Settings.load()),
         "shadow": lambda: run_shadow_report(),
-        "tradelog": lambda: print(trade_table(trades(DATA_DIR))) or 0,
+        "tradelog": lambda: print(trade_table(trades(DATA_DIR, a.live))) or 0,
         "rules": lambda: run_rules(a.symbols),
         "features": lambda: run_features(a.symbols, Settings.load()),
         "backtest": lambda: run_backtest(a.symbols, Settings.load(), a.hours),
@@ -581,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
         "agent": lambda: run_agent(a.symbols, Settings.load(), a.live, a.end_at, a.interval, a.cycles,
                                    not a.no_officer),
         "live": lambda: run_live_report(),
-        "verify-log": lambda: run_verify_log(a.day),
+        "verify-log": lambda: run_verify_log(a.day, a.live),
         "agent-replay": lambda: run_agent_replay(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,
                                                  a.saved),
         "kill": lambda: run_kill(a.symbols, Settings.load()),

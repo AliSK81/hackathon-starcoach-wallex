@@ -1,8 +1,8 @@
-"""The per-trade decision log: why each shadow order was placed, and how it ended.
+"""The per-trade decision log: why each order was placed, and how it ended.
 
-It joins the order events (data/shadow/orders.jsonl) with the decisions that
-placed them (data/decisions/). An order carries the time of its decision
-(`decided_at`). Older decisions without it are matched to the first decision
+It joins the order events (data/shadow/orders.jsonl, or data/live/orders.jsonl)
+with the decisions that placed them (data/decisions/, or data/live/decisions/).
+An order carries the time of its decision (`decided_at`). Older decisions without it are matched to the first decision
 logged within 10 minutes after the order.
 """
 
@@ -32,11 +32,11 @@ def decision_for(t: int, decisions: list[dict]) -> dict | None:
     return min(later, key=lambda r: r["time"]) if later else None
 
 
-def trades(data_dir: Path) -> list[dict]:
+def trades(data_dir: Path, live: bool = False) -> list[dict]:
     """One row per order, with its last known state and the AI's view when it was placed."""
-    log = data_dir / "shadow" / "orders.jsonl"
-    events = read_jsonl([log]) if log.is_file() else []
-    decisions = read_jsonl(sorted((data_dir / "decisions").glob("*.jsonl")))
+    log = data_dir / ("live" if live else "shadow") / "orders.jsonl"
+    events = [e for e in read_jsonl([log]) if e.get("setup")] if log.is_file() else []  # skip account-wide events
+    decisions = read_jsonl(sorted(((data_dir / "live" if live else data_dir) / "decisions").glob("*.jsonl")))
     by_order = {}
     for e in events:  # every event carries the order's fields, so t is when the order was placed
         by_order.setdefault((e["symbol"], e["t"]), []).append(e)
@@ -48,8 +48,9 @@ def trades(data_dir: Path) -> list[dict]:
         rows.append({
             "placed": datetime.fromtimestamp(t, UTC).strftime("%Y-%m-%d %H:%M"),
             "symbol": symbol, "setup": placed["setup"], "tmn": placed["tmn"], "rule": placed.get("rule", ""),
-            "confidence": d.get("confidence"), "reason": d.get("reason", ""),
-            "status": last["status"], "entry": last.get("entry"), "exit": last.get("reason", ""),
+            "confidence": d.get("confidence", d.get("conviction")), "reason": d.get("reason", ""),
+            "status": last["status"], "entry": last.get("entry"),
+            "exit": last.get("reason") or last.get("sell_reason", ""),
             "net_pct": last.get("net_pct"),
         })
     return rows

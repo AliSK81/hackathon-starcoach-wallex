@@ -24,11 +24,11 @@ This installs the project and prints which keys are set. Copy `.env.example` to 
 ```bash
 uv run wx agent --shadow --end-at 2026-10-23T00:30   # fake orders on live data, every liquid allowed TMN market
 uv run wx order-test USDTTMN                          # check real orders: a buy 20% under the price, read back, cancelled
-uv run wx agent --live --end-at 2026-10-23T00:30     # REAL orders
-uv run python scripts/keep_running.py --live --end-at 2026-10-23T00:30   # the same, restarted after any stop
+uv run wx agent --live --end-at 2026-10-23T18:00     # REAL orders
+uv run python scripts/keep_running.py --live --end-at 2026-10-23T18:00   # the same, restarted after any stop
 ```
 
-`scripts/keep_running.py` restarts the agent if its process ever stops, until trading ends or `data/KILL` exists. The book, orders and memory are on disk, so a restart loses nothing. Starts and stops are logged in `data/brain/supervisor.log`.
+`scripts/keep_running.py` restarts the agent if its process ever stops, until trading ends or `data/KILL` exists. The book, orders and memory are on disk, so a restart loses nothing. Starts and stops are logged in `data/brain/supervisor.log`, and the agent's output in `data/brain/live_run.log`.
 
 Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRATEGY.md)): features, candidates, the AI analyst with tools (Wallex MCP order book, skills, lessons), the AI risk officer, the code gate and risk check, orders, lessons after closed trades, the log. Between cycles, a guard checks stops every minute. `--end-at` is when trading ends (UTC): no new buys in the last 3 hours, everything sold into Toman 30 minutes before. Options: `--interval`, `--cycles`, `--no-officer`.
 
@@ -36,7 +36,8 @@ Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRA
 |---|---|
 | `uv run wx live` | The live book: positions, results, reasons. |
 | `uv run wx kill` | Kill switch: cancel every open order and sell every position. A file `data/KILL` does the same inside a running agent. |
-| `uv run wx verify-log` | Check the hash chain of the agent's decision log. |
+| `uv run wx verify-log --live` | Check the hash chain of the live decision log (`data/live/decisions/`). Without `--live`: the shadow log. |
+| `uv run wx tradelog --live` | Every live order with the AI's reason and the result, as a Markdown table. |
 | `uv run wx shadow` | The older shadow book (`wx run --shadow`). |
 
 Memory lives in `data/brain/` (SQLite), with every AI call and answer (`llm_cache.sqlite`; `WX_LLM_REPLAY=1` uses saved answers again). The live book is `data/live/book.json`, and every order event is in `data/live/orders.jsonl`.

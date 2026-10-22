@@ -10,6 +10,8 @@
 - Halt: after HALT_AFTER failed cycles or guard rounds in a row, no new buys until
   a clean cycle. Kill file: if data/KILL exists, the guard sells everything and
   the run stops.
+- Live decisions are logged in data/live/decisions/, shadow ones in data/decisions/,
+  so the two runs never share one hash chain.
 - Every AI call and answer is saved in data/brain/llm_cache.sqlite. With
   WX_LLM_REPLAY=1, saved answers are used again, so a past cycle re-runs exactly.
 """
@@ -68,10 +70,16 @@ def parallel_features(markets: dict[str, dict], settings: Settings, data_dir: Pa
     return table, errors
 
 
+def log_dir(data_dir: Path, name: str) -> Path:
+    """Where a run's decision log lives: data/live/decisions/ for live, data/decisions/ for shadow."""
+    return data_dir / "live" if name == "live" else data_dir
+
+
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
                store, officer: bool = True, env=ENVELOPE, universe: bool = False) -> Brain:
     """With universe, the markets are picked again every cycle: every liquid allowed TMN market (universe.py)."""
     mcp = WallexMCP()
+    logs = log_dir(data_dir, executor.kind)
 
     def features():
         pick = markets
@@ -90,7 +98,7 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
         return [b[4] for b in bars[-hours:]]
 
     def log(record: dict) -> None:
-        log_decision(data_dir, {"version": code_version(), **record}, chain=True)
+        log_decision(logs, {"version": code_version(), **record}, chain=True)
 
     def candles(symbol: str, minutes: int, bars: int) -> list:
         now = int(time.time())
@@ -181,7 +189,7 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
     config = {"configurable": {"thread_id": thread}}
     stop = threading.Event()
     threading.Thread(target=guard_loop, args=(brain, data_dir, stop), daemon=True).start()
-    cycle, failures = 0, 0
+    cycle, failures, logs = 0, 0, log_dir(data_dir, thread)
     try:
         while (cycles is None or cycle < cycles) and not stop.is_set():
             cycle += 1
@@ -193,7 +201,7 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
             except Exception as error:  # log it and go on at the next beat
                 failures += 1
                 brain.halted = failures >= HALT_AFTER
-                log_decision(data_dir, {"cycle": cycle, "version": code_version(), "role": "brain",
+                log_decision(logs, {"cycle": cycle, "version": code_version(), "role": "brain",
                                         "error": f"{type(error).__name__}: {error}", "halted": brain.halted},
                              chain=True)
                 print(f"cycle {cycle} failed: {type(error).__name__}: {error}"
@@ -212,7 +220,7 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
         import traceback
         print(f"The agent is stopping: {type(error).__name__}: {error}", flush=True)
         print(traceback.format_exc(), flush=True)
-        log_decision(data_dir, {"role": "brain", "version": code_version(),
+        log_decision(logs, {"role": "brain", "version": code_version(),
                                 "error": f"agent stopped: {type(error).__name__}: {error}"}, chain=True)
         raise
     finally:
