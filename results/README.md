@@ -10,6 +10,7 @@ Saved outputs behind the facts in [DECISIONS.md](../docs/DECISIONS.md). Each one
 | `replay_trend_free_veto.jsonl` | `uv run wx replay --from results/replay_trend_free_veto.jsonl` | The AI free to stop trend buys. It stopped 70%, and made it worse (F27). |
 | `replay_trend_checked_veto.jsonl` | `uv run wx replay --from results/replay_trend_checked_veto.jsonl` | The AI may stop a buy only with a checked veto. Slightly better than no AI (F31). |
 | `replay_trend_agent.jsonl` | `uv run wx replay --from results/replay_trend_agent.jsonl` | The default role: checked veto plus tools. Every tool call is in the log. Slightly better than no AI (F33). |
+| `shadow_trade_log.md` | `uv run wx tradelog` | The live shadow book's trades: why each was placed, and how it ended. |
 
 Each replay line holds one past moment: all features, the AI's full answer and reasoning, the checked decisions, and how each trade played out. `--from` prints the summary without calling the AI.
 
