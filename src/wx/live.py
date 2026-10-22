@@ -337,6 +337,13 @@ class LiveExecutor:
                     closed += self.check_sell(p, self.trader.get(p.sell_id), now)
                 elif p.status == "buying" and now >= p.t + p.fill_minutes * 60:
                     self.cancel_buy(p, now)
+                elif p.status == "buying":  # book a fill within the minute, so its stop is watched at once
+                    state = self.trader.get(p.buy_id)
+                    if state is not None and state.done:
+                        self.take_fill(p, state, now)
+                        if p.status == "buying":
+                            p.status = "cancelled"
+                            self.event(now, "buy ended unfilled", p, wallex_status=state.status)
             except WallexError as error:
                 self.event(now, "guard failed", p, error=str(error))
         self.save()

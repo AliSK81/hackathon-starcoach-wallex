@@ -200,3 +200,13 @@ def test_the_trend_exit_waits_for_a_real_turn(ex):
     assert p.status == "open" and p.trend_up_seen
     ex.sync({"SOLTMN": down}, NOW + 2700)
     assert p.status in ("selling", "closed") and p.sell_reason == "plan exit (time or trend)"
+
+
+def test_the_guard_books_a_fill_within_the_minute(ex):
+    ex.buy("SOLTMN", "x", f(), Verdict(500_000, 4.0, "approved", "ok"), NOW)
+    p = ex.positions_[0]
+    ex.guard(NOW + 60)
+    assert p.status == "buying"  # not filled yet: keep waiting
+    ex.trader.fill(p.buy_id)
+    ex.guard(NOW + 120)
+    assert p.status == "open" and p.entry  # booked by the guard, before the next cycle: the stop is live
