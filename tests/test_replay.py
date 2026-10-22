@@ -1,5 +1,6 @@
 import json
 
+from wx import cli
 from wx.decide import decide
 from wx.llm import LLMError, Reply
 from wx.replay import BEAT, pick_times, replay_moment, run_replay, sample_times, summary
@@ -145,3 +146,13 @@ def test_study_report_runs_on_a_small_history():
     assert rows and all(r["t"] % 3600 == 0 for r in rows)
     text = report(rows, histories, [4.0])
     assert "sharp_drop: 0 entries" in text and "trend: " in text and "stop 4 ATR" in text
+
+
+def test_a_saved_replay_can_be_summarized_without_the_ai(tmp_path, capsys):
+
+    histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
+    log = tmp_path / "run.jsonl"
+    run_replay([T0], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup, log, workers=1)
+    capsys.readouterr()
+    assert cli.main(["replay", "--from", str(log)]) == 0
+    assert "AI buys                               1  average net +9.20%" in capsys.readouterr().out

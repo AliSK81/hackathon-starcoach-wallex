@@ -253,7 +253,10 @@ def run_backtest(symbols: list[str], settings: Settings) -> int:
 
 
 def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int,
-                   any_time: bool, role: str) -> int:
+                   any_time: bool, role: str, saved: Path | None = None) -> int:
+    if saved:  # summarize a saved replay: the AI's answers and the outcomes are in the log
+        print(summary([json.loads(line) for line in saved.read_text(encoding="utf-8").splitlines() if line]))
+        return 0
     if missing_ai_settings(settings):
         return 1
     markets = pick_markets(symbols)
@@ -355,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     replayer.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
     replayer.add_argument("--workers", type=int, default=4, help="AI calls at the same time (default 4)")
     replayer.add_argument("--any-time", action="store_true", help="pick any moments, not only ones with a setup")
+    replayer.add_argument("--from", dest="saved", type=Path, default=None,
+                          help="summarize a saved replay log instead of asking the AI")
     replayer.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
                           help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
     commands.add_parser("shadow", help="show the shadow book: cash, open orders, closed trades")
@@ -386,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_ai(Settings.load())
     if args.command == "replay":
         return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers,
-                              args.any_time, args.role)
+                              args.any_time, args.role, args.saved)
     if args.command == "shadow":
         print(shadow_report(Book.load(DATA_DIR / "shadow" / "book.json")))
         return 0
