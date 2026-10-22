@@ -25,7 +25,10 @@ This installs the project and prints which keys are set. Copy `.env.example` to 
 uv run wx agent --shadow --end-at 2026-10-23T00:30   # fake orders on live data, every liquid allowed TMN market
 uv run wx order-test USDTTMN                          # check real orders: a buy 20% under the price, read back, cancelled
 uv run wx agent --live --end-at 2026-10-23T00:30     # REAL orders
+uv run python scripts/keep_running.py --live --end-at 2026-10-23T00:30   # the same, restarted after any stop
 ```
+
+`scripts/keep_running.py` restarts the agent if its process ever stops, until trading ends or `data/KILL` exists. The book, orders and memory are on disk, so a restart loses nothing. Starts and stops are logged in `data/brain/supervisor.log`.
 
 Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRATEGY.md)): features, candidates, the AI analyst with tools (Wallex MCP order book, skills, lessons), the AI risk officer, the code gate and risk check, orders, lessons after closed trades, the log. Between cycles, a guard checks stops every minute. `--end-at` is when trading ends (UTC): no new buys in the last 3 hours, everything sold into Toman 30 minutes before. Options: `--interval`, `--cycles`, `--no-officer`.
 

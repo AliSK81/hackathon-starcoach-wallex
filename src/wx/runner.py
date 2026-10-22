@@ -207,9 +207,17 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
                 step = min(interval, pace) if interval else pace
                 time.sleep(step - time.time() % step)
     except KeyboardInterrupt:
-        print("Stopped.")
+        print("Stopped by Ctrl+C.", flush=True)
+    except BaseException as error:  # log why the agent ends, whatever it is, then let the supervisor restart it
+        import traceback
+        print(f"The agent is stopping: {type(error).__name__}: {error}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        log_decision(data_dir, {"role": "brain", "version": code_version(),
+                                "error": f"agent stopped: {type(error).__name__}: {error}"}, chain=True)
+        raise
     finally:
         stop.set()
+        print(f"Agent loop ended at {datetime.now(UTC):%Y-%m-%d %H:%M:%S} UTC.", flush=True)
     return 0
 
 
