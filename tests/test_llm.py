@@ -7,7 +7,7 @@ import pytest
 
 from wx import cli
 from wx.config import Settings
-from wx.llm import LLMError, chat, parse_json, strip_thinking
+from wx.llm import LLMError, Tool, chat, chat_with_tools, parse_json, strip_thinking
 
 KEY = "sk-secret-key-value"
 URL = "https://ai.example.com/v1/"
@@ -93,3 +93,54 @@ def test_wx_ai_prints_the_answer_but_not_the_key(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert '"action": "HOLD"' in out and "Tokens: 42" in out
     assert KEY not in out
+
+
+def tool_call(name, arguments, id_="c1"):
+    return {"id": id_, "type": "function", "function": {"name": name, "arguments": arguments}}
+
+
+def scripted(monkeypatch, messages_out):
+    """Fake provider: answers with each message in turn, and records every request body."""
+    bodies = []
+
+    def fake_urlopen(request, timeout):
+        bodies.append(json.loads(request.data))
+        message = messages_out[len(bodies) - 1]
+        body = {"model": "m1", "choices": [{"message": message}], "usage": {"total_tokens": 10}}
+        return io.BytesIO(json.dumps(body).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return bodies
+
+
+def test_tools_are_called_and_logged(monkeypatch):
+    bodies = scripted(monkeypatch, [
+        {"content": None, "tool_calls": [tool_call("double", '{"x": 21}')]},
+        {"content": '{"answer": 42}', "reasoning_content": "used the tool"},
+    ])
+    tools = {"double": Tool("double a number", {"type": "object"}, lambda x: {"value": 2 * x})}
+    reply = chat_with_tools(URL, "m1", KEY, [{"role": "user", "content": "go"}], tools)
+    assert parse_json(reply.text) == {"answer": 42}
+    assert reply.steps == [{"tool": "double", "args": {"x": 21}, "result": {"value": 42}}]
+    assert reply.usage == {"total_tokens": 20} and reply.reasoning == "used the tool"
+    assert bodies[0]["tools"][0]["function"]["name"] == "double"
+    assert bodies[1]["messages"][-1] == {"role": "tool", "tool_call_id": "c1", "content": '{"value": 42}'}
+
+
+def test_a_failing_tool_tells_the_ai_and_goes_on(monkeypatch):
+    scripted(monkeypatch, [
+        {"content": None, "tool_calls": [tool_call("nope", "{}"), tool_call("boom", "{}", "c2")]},
+        {"content": "{}"},
+    ])
+    tools = {"boom": Tool("fails", {"type": "object"}, lambda: 1 / 0)}
+    reply = chat_with_tools(URL, "m1", KEY, [], tools)
+    assert [s["result"]["error"].split(":")[0] for s in reply.steps] == ["KeyError", "ZeroDivisionError"]
+
+
+def test_tool_rounds_are_limited(monkeypatch):
+    endless = {"content": None, "tool_calls": [tool_call("ping", "{}")]}
+    bodies = scripted(monkeypatch, [endless, endless, {"content": "{}"}])
+    reply = chat_with_tools(URL, "m1", KEY, [], {"ping": Tool("ping", {"type": "object"}, lambda: "pong")},
+                            max_rounds=2)
+    assert len(reply.steps) == 2 and len(bodies) == 3
+    assert "tools" not in bodies[2] and bodies[2]["messages"][-1]["content"].startswith("No more tools")

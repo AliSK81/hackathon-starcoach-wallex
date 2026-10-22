@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Callable
 
 TIMEOUT = 120
 
@@ -25,6 +26,16 @@ class Reply:
     seconds: float
     reasoning: str = ""  # the model's own thinking, if the provider sends it
     usage: dict = field(default_factory=dict)  # token counts, as the provider sends them
+    tool_calls: list = field(default_factory=list)  # tools the AI asks to call, as the provider sends them
+    steps: list = field(default_factory=list)  # tools called before this answer: {tool, args, result}
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A function the AI may call. parameters is a JSON schema for its arguments."""
+    description: str
+    parameters: dict
+    run: Callable[..., object]
 
 
 def strip_thinking(text: str) -> tuple[str, str]:
@@ -61,11 +72,14 @@ def chat(
     json_mode: bool = False,
     temperature: float = 0.0,
     timeout: float = TIMEOUT,
+    tools: list[dict] | None = None,
 ) -> Reply:
     """Send one chat request and return the answer."""
     body = {"model": model, "messages": messages, "temperature": temperature}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    if tools:
+        body["tools"] = tools
     request = urllib.request.Request(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode(),
@@ -97,4 +111,41 @@ def chat(
         seconds=round(seconds, 2),
         reasoning=(message.get("reasoning_content") or thinking).strip(),
         usage=reply.get("usage") or {},
+        tool_calls=message.get("tool_calls") or [],
     )
+
+
+def chat_with_tools(base_url: str, model: str, api_key: str, messages: list[dict], tools: dict[str, Tool],
+                    max_rounds: int = 4, timeout: float = TIMEOUT) -> Reply:
+    """Let the AI call tools until it answers, at most max_rounds times.
+
+    Each call and its result are kept in Reply.steps, so the log shows how the
+    AI got to its answer. A tool that fails returns {"error": ...} to the AI.
+    Time and tokens are added up over all rounds.
+    """
+    specs = [{"type": "function", "function": {"name": name, "description": t.description, "parameters": t.parameters}}
+             for name, t in tools.items()]
+    messages, steps, seconds, tokens, reasoning = list(messages), [], 0.0, 0, []
+    for round_ in range(max_rounds + 1):
+        last = round_ == max_rounds
+        if last:
+            messages.append({"role": "user", "content": "No more tools. Give your final answer now."})
+        reply = chat(base_url, model, api_key, messages, timeout=timeout, tools=None if last else specs)
+        seconds += reply.seconds
+        tokens += reply.usage.get("total_tokens", 0)
+        reasoning.append(reply.reasoning)
+        if not reply.tool_calls or last:
+            break
+        messages.append({"role": "assistant", "content": reply.text, "tool_calls": reply.tool_calls})
+        for call in reply.tool_calls:
+            name = call.get("function", {}).get("name", "")
+            try:
+                args = json.loads(call["function"].get("arguments") or "{}")
+                result = tools[name].run(**args)
+            except Exception as error:  # a bad call must not end the decision
+                args, result = call.get("function", {}).get("arguments"), {"error": f"{type(error).__name__}: {error}"}
+            steps.append({"tool": name, "args": args, "result": result})
+            messages.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": json.dumps(result)})
+    reply.seconds, reply.usage, reply.steps = round(seconds, 2), {"total_tokens": tokens}, steps
+    reply.reasoning = "\n\n".join(r for r in reasoning if r)
+    return reply
