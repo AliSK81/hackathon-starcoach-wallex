@@ -110,6 +110,28 @@ def report(result: Result, name: str) -> str:
     return line
 
 
+def windows(rows: list[dict], histories: dict[str, History], policy: Policy, orders: str, days: int = 3,
+            lookup: Lookup | None = None) -> str:
+    """A fresh 5,000,000 TMN book started every day and run for `days`: how often it ends up, and by how much.
+
+    This is closer to the contest than one long run: a few days, starting at a moment nobody chose.
+    Open positions at the end of a window count at their market value.
+    """
+    lookup = lookup or lookup_from(rows)
+    hours = sorted({r["t"] for r in rows})
+    returns = []
+    for start in range(hours[0], hours[-1] - days * 86400, 86400):
+        part = [r for r in rows if start <= r["t"] < start + days * 86400]
+        result = run(part, histories, policy, orders=orders, lookup=lookup)
+        returns.append(result.curve[-1][1] / START_TMN * 100 - 100 if result.curve else 0.0)
+    if not returns:
+        return "too little history for windows"
+    returns.sort()
+    return (f"{len(returns)} windows of {days} days: up in {sum(r > 0 for r in returns) / len(returns):.0%}, "
+            f"average {mean(returns):+.2f}%, median {returns[len(returns) // 2]:+.2f}%, "
+            f"worst {returns[0]:+.2f}%, best {returns[-1]:+.2f}%")
+
+
 # Rules-only policies to compare.
 POLICIES = {
     "all setups": ("trend", "sharp_drop", "oversold"),
@@ -130,4 +152,5 @@ def scenarios(rows: list[dict], histories: dict[str, History]) -> str:
             for period, part in periods.items():
                 result = run(part, histories, setups_policy(setups), orders=orders, lookup=lookup)
                 lines.append(report(result, f"{name}, {period}"))
+            lines.append(f"{name}, " + windows(rows, histories, setups_policy(setups), orders, lookup=lookup))
     return "\n".join(lines)
