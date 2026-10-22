@@ -258,6 +258,8 @@ The owner chose active risk (D54), one level under aggressive, and prefers sever
 big bets. When you see an edge after costs: risk_pct 1 to 1.5, at most the envelope's limit in one coin (20%), so
 several trades can run together. Take the good trades rather than waiting for perfect ones; a buy still needs an
 edge after costs. The hard limits and the halts after losses stay.
+The envelope's limits apply to new buys only. A position bought under an older, larger limit stays as it is:
+never sell a position only to fit a limit, because a sell closes all of it and pays the costs (F74).
 
 Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
@@ -300,6 +302,7 @@ FORMAT = """{
             "invalidation": "<what would prove this wrong>"}],
   "sells": [{"symbol": "...", "reason": "<at most 200 characters>"}]
 }
+A sell closes the whole position: there is no partial sell.
 "buys" may be empty. Positions not in "sells" are kept with their exit plan."""
 
 DEBATER = """You are the {side} analyst of a trading bot on Wallex (spot, long only, Toman markets).
