@@ -5,7 +5,7 @@ import urllib.request
 
 import pytest
 
-from wx import cli
+from wx import cli, llm
 from wx.config import Settings
 from wx.llm import LLMError, Tool, chat, chat_with_tools, parse_json, strip_thinking
 
@@ -145,3 +145,35 @@ def test_tool_rounds_are_limited(monkeypatch):
                             max_rounds=2)
     assert len(reply.steps) == 2 and len(bodies) == 3
     assert "tools" not in bodies[2] and bodies[2]["messages"][-1]["content"].startswith("No more tools")
+
+
+@pytest.fixture(autouse=True)
+def no_retry_pause(monkeypatch):
+    monkeypatch.setattr(llm, "RETRY_PAUSE", 0)
+
+
+def test_a_server_error_is_tried_once_more(monkeypatch):
+    calls = []
+
+    def flaky(request, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(request.full_url, 500, "boom", {}, io.BytesIO(b"connection error"))
+        return fake_reply('{"ok": true}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", flaky)
+    assert parse_json(chat(URL, "m1", KEY, []).text) == {"ok": True}
+    assert len(calls) == 2
+
+
+def test_a_client_error_is_not_retried(monkeypatch):
+    calls = []
+
+    def bad_key(request, timeout):
+        calls.append(1)
+        raise urllib.error.HTTPError(request.full_url, 401, "no", {}, io.BytesIO(b"bad key"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", bad_key)
+    with pytest.raises(LLMError):
+        chat(URL, "m1", KEY, [])
+    assert len(calls) == 1

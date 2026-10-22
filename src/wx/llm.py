@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 TIMEOUT = 120
+RETRY_PAUSE = 5  # seconds before the one retry of a failed AI call
 
 
 class LLMError(Exception):
@@ -64,6 +65,38 @@ def parse_json(text: str) -> dict:
     return value
 
 
+def post(url: str, body: dict, api_key: str, timeout: float) -> dict:
+    """POST a chat request and return the JSON reply.
+
+    A server error (5xx), a lost connection or a timeout is tried once more after
+    RETRY_PAUSE seconds: asking the AI again has no side effects. Other errors are not.
+    """
+    request = urllib.request.Request(
+        url, data=json.dumps(body).encode(), method="POST",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}", "User-Agent": "wx"},
+    )
+    for attempt in (1, 2):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            try:
+                detail = error.read()[:300].decode(errors="replace")
+            except OSError:
+                detail = ""
+            # A provider could echo the key back in an error. Never pass it on.
+            failure = LLMError(f"chat: HTTP {error.code} {detail.replace(api_key, '***')}")
+            if error.code < 500 or attempt == 2:
+                raise failure from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            if attempt == 2:
+                raise LLMError(f"chat failed: {str(error).replace(api_key, '***')}") from error
+        except json.JSONDecodeError as error:
+            raise LLMError(f"chat: the reply is not JSON: {error}") from error
+        time.sleep(RETRY_PAUSE)
+    raise AssertionError("unreachable")
+
+
 def chat(
     base_url: str,
     model: str,
@@ -80,25 +113,8 @@ def chat(
         body["response_format"] = {"type": "json_object"}
     if tools:
         body["tools"] = tools
-    request = urllib.request.Request(
-        base_url.rstrip("/") + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}", "User-Agent": "wx"},
-        method="POST",
-    )
     started = time.monotonic()
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            reply = json.loads(response.read())
-    except urllib.error.HTTPError as error:
-        try:
-            detail = error.read()[:300].decode(errors="replace")
-        except OSError:
-            detail = ""
-        # A provider could echo the key back in an error. Never pass it on.
-        raise LLMError(f"chat: HTTP {error.code} {detail.replace(api_key, '***')}") from error
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise LLMError(f"chat failed: {str(error).replace(api_key, '***')}") from error
+    reply = post(base_url.rstrip("/") + "/chat/completions", body, api_key, timeout)
     seconds = time.monotonic() - started
     try:
         message = reply["choices"][0]["message"]
