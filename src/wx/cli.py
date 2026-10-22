@@ -1,11 +1,13 @@
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 from wx import __version__
 from wx.account import fee_groups, nonzero_balances, save_account
+from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
 from wx.decide import code_version, decide, holdings, log_decision
@@ -17,6 +19,9 @@ from wx.rules import MarketRules
 from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
+
+# Seconds between decisions in `wx run`. See DECISIONS D19.
+DECIDE_EVERY = 900
 
 
 def status(settings: Settings) -> str:
@@ -210,19 +215,16 @@ def decision_report(record: dict) -> str:
     return "\n".join(lines)
 
 
-def run_decide(symbols: list[str], settings: Settings) -> int:
-    if missing_ai_settings(settings):
-        return 1
-    markets = pick_markets(symbols)
-    if markets is None:
-        return 1
+def decision_cycle(markets: dict[str, dict], settings: Settings, cycle: int | None = None) -> dict:
+    """Features, account, one AI decision, and the log line. Returns the record."""
     table, feature_errors = collect_features(markets, settings)
-    record = {"version": code_version(), "markets": table, "feature_errors": feature_errors,
+    record = {"cycle": cycle, "version": code_version(), "markets": table, "feature_errors": feature_errors,
               "cash_tmn": None, "held": {}, "account_error": None}
     if not table:
-        path = log_decision(DATA_DIR, {**record, "driver": "none", "error": "no market has features", "decisions": []})
+        record.update(driver="none", error="no market has features", ai=None, decisions=[])
+        path = log_decision(DATA_DIR, record)
         print(f"No market has features, so no decision. Logged: {path}")
-        return 1
+        return record
     key = settings.get("WALLEX_API_KEY")
     try:
         if not key:
@@ -239,7 +241,43 @@ def run_decide(symbols: list[str], settings: Settings) -> int:
     path = log_decision(DATA_DIR, record)
     print(decision_report(record))
     print(f"Logged: {path}")
-    return 0 if record["driver"] == "ai" and not feature_errors else 1
+    return record
+
+
+def run_decide(symbols: list[str], settings: Settings) -> int:
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    record = decision_cycle(markets, settings)
+    return 0 if record["driver"] == "ai" and not record["feature_errors"] else 1
+
+
+def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int | None) -> int:
+    """`wx run`: a decision on every beat. No orders. Every cycle is logged, even a failed one."""
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+
+    def step(cycle: int) -> None:
+        print(f"--- cycle {cycle} at {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
+        try:
+            decision_cycle(markets, settings, cycle)
+        except Exception as error:  # log it, then let the beat report it and go on
+            log_decision(DATA_DIR, {"cycle": cycle, "version": code_version(), "driver": "none",
+                                    "error": f"{type(error).__name__}: {error}", "ai": None, "decisions": []})
+            raise
+
+    print(f"Deciding on {' '.join(markets)} every {interval} s. No orders. "
+          f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
+    try:
+        every(interval, step, cycles)
+    except KeyboardInterrupt:
+        print("Stopped.")
+    return 0
 
 
 AI_CHECK = [
@@ -301,16 +339,24 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("ai", help="check the AI settings with one small call")
     decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no orders)")
     decider.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    runner = commands.add_parser("run", help="decide on a fixed beat and log every cycle (no orders)")
+    runner.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    runner.add_argument("--interval", type=int, default=DECIDE_EVERY,
+                        help=f"seconds between cycles (default {DECIDE_EVERY})")
+    runner.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
     features = commands.add_parser("features", help="indicators per market, from candles and the live book")
     features.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
     # Wallex messages can be in Persian. Never crash on a console that can't show them.
+    # Print each line at once, so a long run's output is never held back.
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(errors="backslashreplace")
+        sys.stdout.reconfigure(errors="backslashreplace", line_buffering=True)
     if args.command == "account":
         return run_account(Settings.load())
     if args.command == "ai":
         return run_ai(Settings.load())
+    if args.command == "run":
+        return run_loop(args.symbols, Settings.load(), args.interval, args.cycles)
     if args.command == "decide":
         return run_decide(args.symbols, Settings.load())
     if args.command == "features":

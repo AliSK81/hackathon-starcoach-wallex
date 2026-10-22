@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
+from wx.beat import every
 from wx.wallex import fetch_best_prices
 
 
@@ -62,12 +63,4 @@ def watch(symbols: list[str], data_dir: Path, interval: int, cycles: int | None 
 
     Stops after `cycles` cycles, or never if None. Ctrl+C stops it too.
     """
-    cycle = 0
-    while cycles is None or cycle < cycles:
-        cycle += 1
-        try:
-            print(summary(run_cycle(cycle, symbols, data_dir)), flush=True)
-        except Exception as error:  # e.g. the disk is full; try again next beat
-            print(f"cycle {cycle} failed: {type(error).__name__}: {error}", flush=True)
-        if cycles is None or cycle < cycles:
-            sleep(interval - time.time() % interval)
+    every(interval, lambda cycle: print(summary(run_cycle(cycle, symbols, data_dir)), flush=True), cycles, sleep)

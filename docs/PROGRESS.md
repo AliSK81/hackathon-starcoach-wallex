@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 2, in progress
+- **Current phase:** 3, not started (Phase 2 done)
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -315,3 +315,32 @@ Not done yet:
 
 Next change idea:
 - `wx run`: a loop that decides on a fixed beat, logs every cycle, and survives errors. This finishes Phase 2.
+
+### Change 11 — `wx run` decides on a beat and logs every cycle. Phase 2 done — 2026-10-22
+Phase: 2, step 4 (last)
+How to see it: `uv run wx run` (Ctrl+C stops it), or `uv run wx run --interval 120 --cycles 3`
+Proof it works:
+- Live: `wx run --interval 120 --cycles 3` ran 3 cycles and exited with 0. Cycles 2 and 3 started exactly on the beat (00:00:00 and 00:02:00 UTC). Each cycle logged one line. The AI took 53 to 64 s.
+- All 3 cycles said HOLD on all 6 markets, with no problems found. The reasons cite real values. The markets are in uptrends but pulling back, RSI is high, and a typical hourly move is below the round-trip cost.
+- Tests show that a failed AI call logs a `fallback` cycle. An unexpected error logs a `none` cycle with the error, and the loop goes on.
+- `uv run pytest` passed 68 tests, with no internet.
+
+Data check: the AI called USDTTMN illiquid. That is true at night (F16). In the first `wx decide`, BTCTMN's 15-minute, 1-hour and 4-hour returns were all -0.07%. That is also real: the last trade price did not change for hours overnight.
+Research: research file 02 (decision cadence).
+Questions: none
+Decisions: D19. Fact F16.
+
+Shipped:
+- `src/wx/beat.py`: runs a step on a fixed beat and survives a failed step. `wx watch` uses it too now.
+- `wx run [SYMBOL ...] [--interval 900] [--cycles N]`: one decision every beat, logged in `data/decisions/`.
+- `wx decide` and `wx run` share one decision cycle. Each log line has the cycle number.
+- Output is printed line by line, so a long run's output is never held back.
+- `tests/test_run.py`: 3 tests.
+
+Not done yet:
+- The AI has said HOLD in all 4 decisions so far. We have not seen a BUY yet.
+- Nothing keeps `wx run` going after a crash or a reboot.
+- At night, USDTTMN has no trades, and the other markets are thin (F16).
+
+Next change idea:
+- Phase 3 plan. Then the risk check: approve, shrink or reject each AI decision, testable without internet.

@@ -28,6 +28,7 @@ This file lists decisions we already made, and facts we checked.
 | D16 | AI calls use temperature 0 and JSON mode. We keep the model's own reasoning text, so each decision can log it. An AI error message never contains the key. | 2026-10-22 | Claude |
 | D17 | The AI gets a fixed set of named features per market, listed in `FEATURES` in [features.py](../src/wx/features.py). Indicators use closed 1-hour candles only (the last 1,000). Returns compare the live mid price with 1-minute candles that have ended. Regime: ADX above 25 is a trend (up or down by the EMA 20 slope), below 20 is a range, else transition. The maths is our own code, with no new library. | 2026-10-22 | Claude |
 | D18 | One AI call per cycle covers all markets. Per market it answers BUY, SELL or HOLD, a confidence from 0 to 1, a reason, the feature names it used, and what would prove it wrong. Code turns a market into HOLD if the action is unknown, the confidence is bad, no known feature is cited, or it says SELL on a coin we don't hold (or hold less than the minimum order of). If the AI fails or its JSON can't be read, every market is HOLD and the record says `fallback`. Decisions are logged in `data/decisions/<UTC date>.jsonl`, with the code version, all features, cash, holdings, the AI's raw answer and its reasoning. | 2026-10-22 | Claude |
+| D19 | `wx run` decides every 15 minutes (900 s), on the beat. The AI takes about 60 s (F15), so this leaves plenty of room. Returns change every minute, so 15 minutes sees moves the hourly indicators miss. Research file 02 suggests the same. `--interval` changes it. A cycle that fails for any reason is still logged, with driver `none` and the error. | 2026-10-22 | Claude |
 
 ## Checked facts
 
@@ -50,6 +51,7 @@ Facts checked with live Wallex data, our own key, or a real order. Research note
 | F13 | A wrong AI key gives HTTP 401. The error message repeats the key we sent. | Our code replaces it with `***`. | 2026-10-22 | `wx ai` with a wrong key |
 | F14 | Round-trip cost on our 6 markets, with taker fees and the live spread | 0.61% (USDTTMN) to 1.17% (ETHTMN). Fees are 0.60% of that. The spread was 0.01% to 0.57%. | 2026-10-22 | `wx features` |
 | F15 | One decision call for 6 markets | About 60 s and 7,700 tokens: 3,200 in, 4,500 out, of which 2,800 are reasoning. | 2026-10-22 | `wx decide` |
+| F16 | USDTTMN has had no trades for most nights since 2026-09-30, roughly 18:00 to 05:00 UTC. Before that, it had none of these empty hours. The other 5 default markets had at most 2 empty hours in the last 14 days. | In the last 14 days, 120 of 336 USDTTMN hours had zero volume. | 2026-10-22 | 1-hour candles in `data/candles/` |
 
 #### Market rules for the default markets (F10)
 

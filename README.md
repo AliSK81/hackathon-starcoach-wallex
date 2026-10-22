@@ -60,6 +60,12 @@ uv run wx decide
 
 This computes the features, then asks the AI for BUY, SELL or HOLD on each of the six markets, with a reason. Code checks the answer and logs it in `data/decisions/`. It places no orders. It needs the AI settings. With `WALLEX_API_KEY` the AI also sees our cash and holdings.
 
+```bash
+uv run wx run
+```
+
+This makes a decision like `wx decide` every 15 minutes, on the beat (at :00, :15, :30 and :45). Every cycle is logged in `data/decisions/`, even one that fails. Errors never stop it. Ctrl+C stops it. It places no orders. `--interval` and `--cycles` change the beat and the number of cycles.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
