@@ -39,13 +39,20 @@ GUARD_EVERY = 60
 HALT_AFTER = 3
 
 
+def fixed_temperature(model: str) -> bool:
+    """OpenAI's reasoning models (GPT-5, o1, o3, o4) take only their default temperature: sending 0 is an error."""
+    name = (model or "").split("/")[-1].lower()
+    return name.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def chat_model(settings: Settings, data_dir: Path | None = None):
     from langchain_openai import ChatOpenAI
     cache = None
     if data_dir is not None:
         cache = SQLiteLLMCache(data_dir / "brain" / "llm_cache.sqlite", replay=os.environ.get("WX_LLM_REPLAY") == "1")
-    return ChatOpenAI(model=settings.get("LLM_MODEL"), base_url=settings.get("LLM_BASE_URL"),
-                      api_key=settings.get("LLM_API_KEY"), temperature=0, timeout=180, max_retries=2, cache=cache)
+    model = settings.get("LLM_MODEL")
+    return ChatOpenAI(model=model, base_url=settings.get("LLM_BASE_URL"), api_key=settings.get("LLM_API_KEY"),
+                      temperature=None if fixed_temperature(model) else 0, timeout=180, max_retries=2, cache=cache)
 
 
 def parallel_features(markets: dict[str, dict], settings: Settings, data_dir: Path) -> tuple[dict, dict]:

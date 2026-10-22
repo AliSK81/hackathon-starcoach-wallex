@@ -122,3 +122,15 @@ def test_the_universe_is_every_liquid_market_plus_held_and_context():
     m = {s: {"stats": {"24h_tmnVolume": v}} for s, v in
          (("BIGTMN", "9e9"), ("THINTMN", "1e9"), ("HELDTMN", "1e8"), ("BTCTMN", "2e9"), ("USDTTMN", "3e10"))}
     assert list(liquid(m, held={"HELDTMN"})) == ["USDTTMN", "BIGTMN", "BTCTMN", "HELDTMN"]
+
+
+def test_reasoning_models_get_no_temperature():
+    from wx.config import Settings
+    from wx.runner import chat_model, fixed_temperature
+    assert fixed_temperature("openai/gpt-5-mini") and fixed_temperature("gpt-5-mini") and fixed_temperature("o3")
+    assert not fixed_temperature("mohaymen/qwen3.8-27b") and not fixed_temperature("~deepseek/deepseek-flash-latest")
+    settings = Settings({"LLM_MODEL": "openai/gpt-5-mini", "LLM_BASE_URL": "http://localhost:1", "LLM_API_KEY": "x"})
+    payload = chat_model(settings)._get_request_payload([("user", "hi")])
+    assert "temperature" not in payload
+    settings = Settings({"LLM_MODEL": "mohaymen/qwen3.8-27b", "LLM_BASE_URL": "http://localhost:1", "LLM_API_KEY": "x"})
+    assert chat_model(settings)._get_request_payload([("user", "hi")])["temperature"] == 0
