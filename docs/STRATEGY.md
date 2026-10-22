@@ -82,7 +82,7 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 | 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 49% of windows. Average +0.73%. Worst -4.1%, best +14.7%. (F28) |
 | AI replay | 40 past moments per role | The AI's free choices did not beat the rules (F20, F21, F27). |
 | AI replay, checked veto | the same 40 trend moments | Buys the AI let through: +1.53% each. All trend buys: +1.44%. The 6 it stopped: -0.91%. (F31) |
-| AI replay, agent (checked veto + tools) | the same 40 trend moments | Buys the AI let through: +1.64% each. All trend buys: +1.48%. (F33) |
+| AI replay, agent (checked veto + tools) | the same 40 trend moments | Buys the AI let through: +1.34% each. All trend buys: +1.24%. The 7 it stopped: -0.88%. 4.3 tool calls a moment. (F33) |
 
 What this means:
 - The trend rule made money over the last months, on markets it was not chosen on. Much of this comes from the Toman losing value: in these 120 days USDTTMN rose 63% (F24). That may not continue.

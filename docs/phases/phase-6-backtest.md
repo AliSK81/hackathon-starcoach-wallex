@@ -15,4 +15,4 @@ Goal: anyone can run the backtest from the repo and get a report. It compares th
 - [x] `wx study`: each setup on its own, with several stops.
 - [x] `wx replay`: the AI on past moments against the same rules without the AI, for each AI role.
 - [x] Saved outputs in `results/`, with the commands that make them.
-- [ ] A replay of the final AI role (`agent`) on the same moments.
+- [x] A replay of the final AI role (`agent`) on the same moments (F33, `results/replay_trend_agent.jsonl`).
