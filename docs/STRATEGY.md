@@ -68,6 +68,7 @@ All in `risk.py`, normal code. The AI can't skip it (ROADMAP rule 7).
 - No new buys after losing 2% in a UTC day, or while equity is 6% below its peak. The drawdown halt ends after 24 hours.
 - No buys on data older than 5 minutes. Orders below the Wallex minimum (50,000 TMN) are refused.
 - Each verdict names the rule that decided, and is logged.
+- In the backtest, turning the halts off lowered the return and raised the drawdown on both market sets (F29).
 
 ## Results so far
 
