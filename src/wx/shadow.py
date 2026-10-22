@@ -14,7 +14,7 @@ from pathlib import Path
 from wx.backtest import START_TMN
 from wx.prices import append_log
 from wx.risk import Account, Verdict, update_peak
-from wx.trades import FILL_WINDOW, MAKER_FEE_PCT, TAKER_FEE_PCT, History, trade
+from wx.trades import FILL_WINDOW, MAKER_FEE_PCT, TAKER_FEE_PCT, History, exit_rule, trade
 
 
 @dataclass
@@ -27,6 +27,10 @@ class Order:
     spread_pct: float
     stop_pct: float
     status: str = "waiting"  # waiting -> open -> closed, or waiting -> cancelled
+    target_pct: float = 0.0  # the agent's exit plan (0 / False = not used)
+    max_hours: float = 0.0
+    trend_exit: bool = False
+    orders: str = "limit"  # "limit" (maker, at the bid) or "taker"
     entry_t: int | None = None
     entry: float | None = None
     exit_t: int | None = None
@@ -80,7 +84,10 @@ class Book:
                     return None
 
             f = {"price": o.price, "spread_pct": o.spread_pct}
-            done = trade(h, o.setup, o.t, f, o.stop_pct, "limit", features_at, now)
+            planned = o.max_hours or o.trend_exit or o.target_pct
+            rule = exit_rule(o.max_hours, o.trend_exit) if planned else None
+            f = {**f, "round_trip_cost_pct": 2 * TAKER_FEE_PCT + o.spread_pct}  # what a taker round trip costs
+            done = trade(h, o.setup, o.t, f, o.stop_pct, o.orders, features_at, now, o.target_pct, rule)
             if done is None:
                 if now >= o.t + FILL_WINDOW:
                     o.status = "cancelled"
@@ -104,8 +111,13 @@ class Book:
             self.day, self.day_start = now // 86400, equity
         return Account(equity, self.cash, sum(o.tmn for o in self.active()), self.peak, self.day_start)
 
-    def place(self, symbol: str, setup: str, features: dict, verdict: Verdict, now: int, log: Path) -> Order:
-        order = Order(symbol, setup, verdict.tmn, now, features["price"], features["spread_pct"], verdict.stop_pct)
+    def place(self, symbol: str, setup: str, features: dict, verdict: Verdict, now: int, log: Path,
+              exits: dict | None = None) -> Order:
+        exits = exits or {}
+        order = Order(symbol, setup, verdict.tmn, now, features["price"], features["spread_pct"], verdict.stop_pct,
+                      target_pct=float(exits.get("target_pct") or 0), max_hours=float(exits.get("max_hours") or 0),
+                      trend_exit=bool(exits.get("trend_exit")),
+                      orders="taker" if exits.get("order") == "taker" else "limit")
         self.orders.append(order)
         self.cash -= verdict.tmn
         append_log(log, {"t": now, "event": "placed", "rule": verdict.rule, **asdict(order)})

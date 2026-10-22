@@ -26,7 +26,7 @@ from wx.prices import append_log
 from wx.risk import Account, Ledger, Limits, Verdict, update_peak
 from wx.rules import MarketRules
 from wx.setups import SETUPS
-from wx.trades import FILL_WINDOW
+from wx.trades import FILL_WINDOW, exit_rule
 from wx.wallex import WallexError, fetch_balances, fetch_best_prices
 
 EXCLUDED = load_inactive()  # the organizers' list of markets we may not trade
@@ -54,6 +54,9 @@ class Position:
     exit_t: int | None = None
     net_pct: float | None = None
     note: str = ""
+    target_pct: float = 0.0  # the agent's exit plan (0 / False = not used)
+    max_hours: float = 0.0
+    trend_exit: bool = False
 
     @property
     def stop(self) -> float | None:
@@ -142,22 +145,24 @@ class LiveExecutor:
                 out[p.symbol] = {"setup": p.setup, "entry": p.entry, "value_tmn": int(float(p.qty) * price),
                                  "pnl_pct": round((price / p.entry - 1) * 100, 2),
                                  "hours_held": round((now - (p.entry_t or p.t)) / 3600, 1),
-                                 "stop_pct": round(p.stop_pct, 2)}
+                                 "stop_pct": round(p.stop_pct, 2), "target_pct": p.target_pct,
+                                 "max_hours": p.max_hours, "trend_exit": p.trend_exit}
             else:
                 out[p.symbol] = {"setup": p.setup, "status": p.status, "tmn": round(p.tmn)}
         return out
 
     # --- orders ---
-    def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int) -> dict:
+    def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int, exits: dict | None = None) -> dict:
+        exits = exits or {}
         if symbol not in self.rules or symbol in EXCLUDED:  # a hard rule of the contest: allowed markets only (D3)
             self.event(now, "buy refused: not an allowed market", symbol=symbol)
             return {"placed": False, "error": f"{symbol} is not an allowed market"}
         rules = self.rules[symbol]
         try:
-            bid, _ = fetch_best_prices(symbol)
+            bid, ask = fetch_best_prices(symbol)
         except WallexError as error:
             return {"placed": False, "error": str(error)}
-        price = rules.round_price(bid, "BUY")
+        price = rules.round_price(ask if exits.get("order") == "taker" else bid, "BUY")  # taker: fill at once
         qty = rules.round_qty(Decimal(str(verdict.tmn)) / price)
         problems = rules.problems(qty, price)
         if problems:
@@ -169,7 +174,9 @@ class LiveExecutor:
         except WallexError as error:
             self.event(now, "buy failed", symbol=symbol, error=str(error), client_id=cid)
             return {"placed": False, "error": str(error)}
-        p = Position(symbol, setup, float(verdict.tmn), verdict.stop_pct, now, cid)
+        p = Position(symbol, setup, float(verdict.tmn), verdict.stop_pct, now, cid,
+                     target_pct=float(exits.get("target_pct") or 0), max_hours=float(exits.get("max_hours") or 0),
+                     trend_exit=bool(exits.get("trend_exit")))
         self.positions_.append(p)
         self.save()
         self.event(now, "buy placed", p, price=str(price), quantity=str(qty), rule=verdict.rule)
@@ -282,7 +289,12 @@ class LiveExecutor:
                     hours = (now - (p.entry_t or p.t)) / 3600
                     if f and p.stop and f["price"] <= p.stop:
                         closed += self.send_sell(p, now, "stop")
-                    elif f and SETUPS[p.setup].exit(f, hours):
+                    elif f and p.target_pct and f["price"] >= p.entry * (1 + p.target_pct / 100):
+                        closed += self.send_sell(p, now, "target")
+                    elif f and (p.max_hours or p.trend_exit) and exit_rule(p.max_hours, p.trend_exit)(f, hours):
+                        closed += self.send_sell(p, now, "plan exit (time or trend)")
+                    elif f and p.setup in SETUPS and not (p.max_hours or p.trend_exit) \
+                            and SETUPS[p.setup].exit(f, hours):
                         closed += self.send_sell(p, now, "setup exit: " + SETUPS[p.setup].exit_meaning)
             except WallexError as error:
                 self.event(now, "sync failed", p, error=str(error))
@@ -300,6 +312,10 @@ class LiveExecutor:
                     bid, _ = fetch_best_prices(p.symbol)
                     if float(bid) <= p.stop:
                         closed += self.send_sell(p, now, "stop")
+                    elif p.target_pct and float(bid) >= p.entry * (1 + p.target_pct / 100):
+                        closed += self.send_sell(p, now, "target")
+                    elif p.max_hours and now - (p.entry_t or p.t) >= p.max_hours * 3600:
+                        closed += self.send_sell(p, now, "time limit")
                 elif p.status == "selling":
                     closed += self.check_sell(p, self.trader.get(p.sell_id), now)
                 elif p.status == "buying" and now >= p.t + FILL_WINDOW:

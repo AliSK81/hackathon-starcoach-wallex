@@ -196,6 +196,76 @@ def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: L
     return Verdict(round(tmn), stop_pct, name, f"shrunk to the {name} limit")
 
 
+@dataclass(frozen=True)
+class Envelope:
+    """The hard limits code keeps whatever the agent decides (D43). Everything inside them is the agent's call.
+
+    Values follow the installed risk-management and position-sizing skills: risk tiers up to the
+    "aggressive" 3%, at most 80% deployed, a moderate drawdown stop, and no order larger than the book can take.
+    """
+    max_risk_pct: float = 3.0  # most of equity one stop-out may lose, costs included
+    min_stop_pct: float = 1.0
+    max_stop_pct: float = 15.0
+    max_position: float = 0.40  # never all-in: at most this share of equity in one coin
+    max_exposure: float = 0.80  # and at most this share in coins together
+    daily_loss: float = 0.04  # no new buys after losing this much today
+    max_drawdown: float = 0.10  # no new buys while this far below the peak (the halt ends after halt_hours)
+    halt_hours: float = 24
+    max_trades_day: int = 60
+    max_hours: float = 72  # longest hold the agent may plan
+    max_data_age_min: float = 5.0
+    min_order_tmn: float = 50_000
+    book_share: float = 0.5  # an order may take at most this share of the Toman resting within 1% on the ask side
+    no_entry_minutes: float = 45.0  # no new buys this close to the end of trading
+    flatten_minutes: float = 30.0  # sell everything into Toman this close to the end
+
+
+ENVELOPE = Envelope()
+
+
+def clamp(x, lo: float, hi: float, default: float) -> float:
+    try:
+        return min(max(float(x), lo), hi)
+    except (TypeError, ValueError):
+        return default
+
+
+def size_plan(features: dict, account: Account, risk_pct: float, stop_pct: float, env: Envelope = ENVELOPE,
+              ledger: Ledger | None = None, now: int | None = None, hours_left: float | None = None,
+              ask_tmn_1pct: float | None = None) -> Verdict:
+    """Size the agent's buy: the Toman a stop-out at stop_pct would lose is risk_pct of equity, costs included.
+
+    Then the ladder: the smallest of the risk size, the room in one coin, the room in coins, free cash and what the
+    book can take. Rejects only for the envelope's halts. The verdict names the limit that set the size.
+    """
+    risk_pct = clamp(risk_pct, 0.05, env.max_risk_pct, 0.5)
+    stop_pct = clamp(stop_pct, env.min_stop_pct, env.max_stop_pct, 4.0)
+    cost = round_trip_pct(features)
+    if hours_left is not None and hours_left * 60 < env.no_entry_minutes:
+        return Verdict(0, stop_pct, "near the end", f"rejected: {hours_left * 60:.0f} minutes left")
+    if account.equity < account.day_start * (1 - env.daily_loss):
+        return Verdict(0, stop_pct, "daily loss", f"rejected: lost more than {env.daily_loss:.0%} today")
+    if account.equity < account.peak * (1 - env.max_drawdown):
+        return Verdict(0, stop_pct, "drawdown", f"rejected: more than {env.max_drawdown:.0%} below the peak")
+    if (features.get("data_age_min") or 0) > env.max_data_age_min:
+        return Verdict(0, stop_pct, "stale data", f"rejected: data is {features['data_age_min']} minutes old")
+    if ledger is not None and now is not None and sum(now - t < 86400 for t, _ in ledger.entries) >= env.max_trades_day:
+        return Verdict(0, stop_pct, "trade cap", f"rejected: {env.max_trades_day} buys in 24 hours")
+    caps = {
+        "agent's risk": risk_pct / 100 * account.equity / ((stop_pct + cost) / 100),
+        "max in one coin": env.max_position * account.equity,
+        "max in coins": env.max_exposure * account.equity - account.exposure,
+        "free cash": account.cash,
+    }
+    if ask_tmn_1pct:
+        caps["book depth"] = env.book_share * ask_tmn_1pct
+    name, tmn = min(caps.items(), key=lambda kv: kv[1])
+    if tmn < env.min_order_tmn:
+        return Verdict(0, stop_pct, name, f"rejected: the {name} limit leaves {max(tmn, 0):,.0f} TMN")
+    return Verdict(round(tmn), stop_pct, "approved" if name == "agent's risk" else name,
+                   "approved" if name == "agent's risk" else f"shrunk to the {name} limit")
+
+
 def update_peak(peak: float, equity: float, halted_since: int | None, t: int,
                 limits: Limits = Limits()) -> tuple[float, int | None]:
     """The peak to measure drawdown from, and when the drawdown halt began (None if not halted).

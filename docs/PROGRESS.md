@@ -741,3 +741,19 @@ Not done yet:
 
 Next change idea:
 - Go live.
+
+### Change 27 — the agent decides its trades; code keeps only the hard limits — 2026-10-22
+Phase: 2, 3 and 4
+How to see it: `uv run wx agent --shadow`, `uv run wx agent-replay --from results/replay_agent_v2.jsonl`
+Proof it works:
+- The trader proposes full trade plans (market, risk, stop, target, time limit, trend exit, maker or taker) and sells what it wants. Bull and bear argue its buys; a judge approves, reduces or rejects. Code keeps only the envelope (D43).
+- New tools and skills from the installed trading skills: regimes, exit planning, sizing tiers, evidence, any allowed market on demand.
+- A real shadow cycle ran: 9 tool calls in 25 s. The replay on 20 past moments: no failures; mostly no trades in a falling period (F58).
+- `uv run pytest` passed 159 tests.
+
+Research: the installed trading skills (regime-detection, exit-strategies, position-sizing, risk-management, strategy-framework) and research files 01, 02, 08, 12.
+Questions: the user asked for agent decisions instead of fixed rules, for maximum profit, and for nothing outside the requirements (D44).
+Decisions: D43, D44. Fact F58.
+
+Not done yet:
+- A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.

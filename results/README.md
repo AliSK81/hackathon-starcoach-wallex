@@ -11,6 +11,7 @@ Saved outputs behind the facts in [DECISIONS.md](../docs/DECISIONS.md). Each one
 | `setup_split.txt` | `uv run python scripts/test_setup_split.py` | The agent rules with dips only, trend_strong only, and both, on every market set and period (F50). |
 | `replay_agent_graph.jsonl` | `uv run wx agent-replay --from results/replay_agent_graph.jsonl` | The whole agent graph on 20 past moments: every candidate, the AI's decision and size, and how the trade ended (F51). |
 | `risk_modes.txt` | `uv run python scripts/test_risk_modes.py` | Each risk mode the agent can choose, on 12-hour, 1-day, 3-day windows and the whole history, on every market set (F53). |
+| `replay_agent_v2.jsonl` | `uv run wx agent-replay --from results/replay_agent_v2.jsonl` | The agent deciding its own trades on 20 past moments, against the fixed rules and holding (F58). |
 | `study_6_markets.txt` | `uv run wx study` | Each setup on its own, with no stop and with 2, 3 and 4 ATR stops. |
 | `replay_trend_free_veto.jsonl` | `uv run wx replay --from results/replay_trend_free_veto.jsonl` | The AI free to stop trend buys. It stopped 70%, and made it worse (F27). |
 | `replay_trend_checked_veto.jsonl` | `uv run wx replay --from results/replay_trend_checked_veto.jsonl` | The AI may stop a buy only with a checked veto. Slightly better than no AI (F31). |

@@ -25,9 +25,10 @@ from wx.candles import candle_path, load_candles
 from wx.config import Settings
 from wx.cycle import collect_features
 from wx.decide import code_version, log_decision
-from wx.features import HOUR, add_context, closed_bars
+from wx.features import HOUR, add_context, closed_bars, market_features
 from wx.llm_cache import SQLiteLLMCache
-from wx.risk import AGENT_LIMITS
+from wx.markets import tmn_volume
+from wx.risk import ENVELOPE
 from wx.universe import liquid, tradable_tmn
 from wx.wallex import WallexError
 from wx.wallex_mcp import WallexMCP, candle_bars, microstructure
@@ -46,7 +47,7 @@ def chat_model(settings: Settings, data_dir: Path | None = None):
 
 
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
-               store, officer: bool = True, limits=AGENT_LIMITS, universe: bool = False) -> Brain:
+               store, officer: bool = True, env=ENVELOPE, universe: bool = False) -> Brain:
     """With universe, the markets are picked again every cycle: every liquid allowed TMN market (universe.py)."""
     mcp = WallexMCP()
 
@@ -78,9 +79,24 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
             return [{"error": f"{type(error).__name__}: {error}"[:200]}]
         return candle_bars(raw, minutes, bars)
 
+    def market_list() -> list[dict]:
+        """Every allowed TMN market with Wallex's 24h stats, most traded first."""
+        try:
+            markets_now = tradable_tmn()
+        except WallexError as error:
+            return [{"error": str(error)}]
+        rows = [{"symbol": s, "volume_24h_tmn": round(float(tmn_volume(i))),
+                 "change_24h_pct": (i.get("stats") or {}).get("24h_ch")} for s, i in markets_now.items()]
+        return sorted(rows, key=lambda r: -r["volume_24h_tmn"])
+
+    def any_market(symbol: str) -> dict:
+        if symbol not in markets:  # markets holds every allowed TMN market in universe mode
+            raise ValueError(f"{symbol} is not an allowed market")
+        return market_features(symbol, data_dir, 0.003)
+
     return Brain(llm=chat_model(settings, data_dir), executor=executor, features=features,
                  micro=lambda s: microstructure(s, mcp), closes=closes, store=store, log=log, end_at=end_at,
-                 limits=limits, officer=officer, candles=candles)
+                 env=env, officer=officer, candles=candles, market_list=market_list, market_features=any_market)
 
 
 def report(state: dict) -> str:
@@ -93,14 +109,18 @@ def report(state: dict) -> str:
     plan = state.get("plan") or {}
     if plan.get("market_view"):
         lines.append(f"View: {plan['market_view']}")
-    if not state.get("candidates") and not state.get("positions"):
-        lines.append("No candidate and nothing held: the AI was not asked.")
+    if plan.get("approach"):
+        lines.append(f"Approach: {plan['approach']}")
     for d in state.get("decisions", []):
         v = d.get("verdict") or {}
-        lines.append(f"  {d['symbol']:<9} {d['action']:<4} {d.get('setup', '')} conv {d.get('conviction', '')} "
-                     f"{d.get('veto', '')} {v.get('reason', '')} {v.get('tmn') or ''}  {d.get('reason', '')[:120]}")
-        for p in d.get("problems", []):
-            lines.append(f"            problem: {p}")
+        if d["action"] == "SELL":
+            lines.append(f"  {d['symbol']:<9} SELL {d.get('reason', '')[:120]}")
+            continue
+        plan_text = (f"risk {d.get('risk_pct')}% stop {d.get('stop_pct')}% target {d.get('target_pct') or '-'} "
+                     f"max {d.get('max_hours')}h {d.get('order')}")
+        lines.append(f"  {d['symbol']:<9} {d['action']:<4} {d.get('strategy', '')} {plan_text} -> "
+                     f"{v.get('reason', '')} {v.get('tmn') or ''}  {d.get('reason', '')[:100]}"
+                     + (f"  judge: {d['judge'][:80]}" if d.get("judge") else ""))
     for o in state.get("orders", []):
         lines.append(f"  order: {o}")
     for c in state.get("closed", []):

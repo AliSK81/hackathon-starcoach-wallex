@@ -17,10 +17,10 @@ costs in both halves, and on markets not used to pick them (F41). They are rare:
 - The Toman is weakening (`usdt_trend_up` true). Coins tend to recover faster then.
 
 ## Falling knife: warning signs
-- BTCTMN is down 5% or more in 24 hours (veto `market_crash`).
-- Sellers keep hitting the bid: `buy_share` under 0.35 and `imbalance_1pct` under -0.3 (veto `sell_pressure`).
-- The market is empty: many hours with no trades (veto `illiquid`).
+- BTCTMN is down 5% or more in 24 hours: the whole market is falling.
+- Sellers keep hitting the bid: `buy_share` under 0.35 and `imbalance_1pct` under -0.3.
+- The market is empty: many hours with no trades, or a wide spread.
 
 ## Exit
-Code sells after 12 hours, or at the stop (4 ATR below the entry). Do not sell early just because it is down a
-little. A dip often dips more before it turns.
+A time limit of about 12 hours worked in our tests, with a stop near 4 ATR. A target at the 20-hour average is
+reasonable. Don't sell early just because it is down a little: a dip often dips more before it turns.

@@ -3,13 +3,11 @@ from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration
-from langgraph.store.memory import InMemoryStore
 
-from test_brain import NOW, FakeExecutor, brain, market, plan
-from wx.brain import build_graph, check_plan, recall
+from test_brain import NOW
 from wx.decide import log_decision, verify_chain
 from wx.llm_cache import SQLiteLLMCache
-from wx.risk import RISK_MODES, Account, Ledger, Limits, check_buy, mode_cap
+from wx.risk import Account, Ledger, Limits, check_buy, mode_cap
 from wx.trades import History, trade
 from wx.wallex_mcp import book_summary, candle_bars, walk
 
@@ -95,72 +93,21 @@ def test_the_decision_log_is_hash_chained(tmp_path):
     assert checked == 3 and "changed" in problems[0]
 
 
-def test_bull_and_bear_run_and_reach_the_analyst():
-    case = {"cases": [{"symbol": "SOLTMN", "argument": "deep dip", "evidence": ["bb_z_20"], "strength": 0.6}]}
-    b, logs = brain([case, case, plan()], {"SOLTMN": market()})
-    b.debate = True
-    state = build_graph(b).invoke({})
-    assert state["bull"]["cases"] and state["bear"]["cases"] and b.executor.bought
-    assert logs[0]["bull"]["cases"][0]["symbol"] == "SOLTMN"
 
 
-def test_lessons_come_back_losses_first_and_a_buy_keeps_its_thesis():
-    store = InMemoryStore()
-    store.put(("lessons",), "1", {"symbol": "A", "setup": "s", "net_pct": 1.0, "loss": False, "lesson": "won", "t": 3})
-    store.put(("lessons",), "2", {"symbol": "B", "setup": "s", "net_pct": -2.0, "loss": True, "lesson": "lost", "t": 1})
-    assert [x["lesson"] for x in recall(store, None, 5)] == ["lost", "won"]
-    b, _ = brain([plan()], {"SOLTMN": market()})
-    build_graph(b).invoke({})
-    assert b.store.get(("theses",), "SOLTMN").value["reason"] == "deep dip"
 
 
-def test_a_halted_bot_buys_nothing():
-    b, _ = brain([plan()], {"SOLTMN": market()})
-    b.halted = True
-    state = build_graph(b).invoke({})
-    assert not b.executor.bought and state["decisions"][0]["verdict"]["rule"] == "halted"
-
-
-def test_safe_mode_skips_the_debate():
-    b, _ = brain([plan()], {"SOLTMN": market()}, FakeExecutor())
-    b.debate = True
-    state = build_graph(b).invoke({"fail_streak": 5})
-    assert state["bull"] == {} and b.executor.bought
-
-
-def test_agent_replay_summary_compares_ai_buys_with_all_candidates():
+def test_agent_replay_summary_compares_the_agent_with_rules_and_holding():
     from wx.agent_replay import summary
-    rec = {"ai_error": None, "tool_calls": 4, "results": [
-        {"symbol": "A", "ai": "BUY", "tmn": 100, "net_pct": 2.0, "conviction": 0.7, "officer": ""},
-        {"symbol": "B", "ai": "HOLD", "tmn": 0, "net_pct": -1.0, "conviction": 0.2, "officer": ""},
-        {"symbol": "C", "ai": "BUY", "tmn": 0, "net_pct": None, "conviction": 0.5, "officer": ""}]}
+    rec = {"ai_error": None, "tool_calls": 4, "account_pct": 0.2, "rules_trades": [1.0, -2.0], "hold_12h_pct": -0.5,
+           "trades": [{"symbol": "A", "tmn": 100, "net_pct": 2.0}, {"symbol": "B", "tmn": 0, "net_pct": None}]}
     text = summary([rec])
-    assert "every candidate (rules only): +0.50% (2)" in text and "bought by the agent:          +2.00% (1)" in text
+    assert "1 filled buys, +2.00% a trade" in text and "2 trades, -0.50% a trade" in text
 
 
-def mode_state(mode, cap="aggressive", setup="trend", grade="B"):
-    return {"table": {"SOLTMN": market(setups=[setup])}, "risk_mode": "normal", "mode_cap": cap, "positions": {},
-            "candidates": [{"symbol": "SOLTMN", "setup": setup, "grade": grade,
-                            "modes": ["active", "aggressive"] if setup == "trend" else list(RISK_MODES)}],
-            "plan": {"risk_mode": mode, "candidates": [{"symbol": "SOLTMN", "decision": "TAKE", "conviction": 1.0}]}}
-
-
-def test_the_agent_chooses_the_mode_and_the_mode_decides_what_is_traded():
-    d, _, mode = check_plan(mode_state("aggressive"))
-    assert mode == "aggressive" and d[0]["action"] == "BUY" and d[0]["scale"] == 1.0  # ungraded in aggressive
-    d, _, mode = check_plan(mode_state("active"))
-    assert mode == "active" and d[0]["scale"] == 0.5  # grade B halves the risk
-    d, _, mode = check_plan(mode_state("defensive"))
-    assert d[0]["action"] == "HOLD" and "not traded in risk mode defensive" in d[0]["problems"][0]
-
-
-def test_code_caps_the_mode_after_losses_and_keeps_it_on_a_bad_answer():
+def test_rule_set_mode_cap_after_losses():
     assert mode_cap(4_700_000, 5_000_000, 4_800_000) == "normal"  # 6% below the peak
     assert mode_cap(5_000_000, 5_000_000, 5_000_000) == "aggressive"
-    d, problems, mode = check_plan(mode_state("aggressive", cap="normal"))
-    assert mode == "normal" and d[0]["action"] == "HOLD" and "capped" in problems[0]
-    _, problems, mode = check_plan(mode_state("reckless"))
-    assert mode == "normal" and "unknown" in problems[0]
 
 
 def test_the_backtest_buys_a_market_once_even_with_two_active_setups():

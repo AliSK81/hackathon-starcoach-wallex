@@ -49,7 +49,8 @@ class ShadowExecutor:
         out = self.book.positions(table, now)
         for o in self.book.active():
             if o.symbol in out:
-                out[o.symbol]["stop_pct"] = round(o.stop_pct, 2)
+                out[o.symbol].update(stop_pct=round(o.stop_pct, 2), target_pct=o.target_pct, max_hours=o.max_hours,
+                                     trend_exit=o.trend_exit)
             elif o.status == "waiting":
                 out[o.symbol] = {"setup": o.setup, "status": "buy order waiting", "tmn": round(o.tmn)}
         return out
@@ -62,8 +63,8 @@ class ShadowExecutor:
         return Ledger([[o.t, o.symbol] for o in self.book.orders],
                       [[o.exit_t, o.symbol, o.net_pct, ""] for o in self.book.orders if o.status == "closed"])
 
-    def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int) -> dict:
-        order = self.book.place(symbol, setup, f, verdict, now, self.log)
+    def buy(self, symbol: str, setup: str, f: dict, verdict: Verdict, now: int, exits: dict | None = None) -> dict:
+        order = self.book.place(symbol, setup, f, verdict, now, self.log, exits)
         self.book.save(self.path)
         return {"placed": True, "tmn": round(order.tmn)}
 

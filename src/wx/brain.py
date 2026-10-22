@@ -1,46 +1,40 @@
-"""The trading agent: one LangGraph graph per decision cycle.
+"""The trading agent: one LangGraph graph per decision cycle. The agent decides; code keeps the hard limits.
 
-          ┌─> bull ─┐
-    sense ┤         ├─> analyst ──> risk_officer ──> gate ──> act ──> reflect ──> journal
-      │   └─> bear ─┘  (LLM agent,   (LLM judge,      (code)   (code)  (LLM, only
-      │   (LLM, in      tools,        can only                          when trades
-      │    parallel)    skills,       shrink)                           closed)
-      │                 memory)
-      └── nothing to decide ─────────────────────────────────────> act
+    sense ──> analyst ──┬─> bull ─┬─> officer ──> gate ──> act ──> reflect ──> journal
+     (code)  (AI agent) └─> bear ─┘  (AI judge)  (code)   (code)  (AI, after
+                         (AI, on the                                closed trades)
+                          analyst's own buys)
 
-- sense (code): live features for every market, whole-market context, the book
-  and trade flow of each candidate (Wallex MCP), our account and positions.
-  Candidates are markets where a 12-hour setup (setups.SHORT_SETUPS) is active.
-- bull, bear (LLM, in parallel): each argues one side for every candidate, citing
-  feature names only. Skipped in safe mode or over the daily token budget.
-- analyst (LLM): a ReAct agent with read-only tools. It reads trader skills
-  (skills/*.md), weighs the bull and bear cases, and gets its lessons from past
-  trades (losses first) and its own thesis for each position. It studies each
-  candidate and each position, and answers in JSON.
-- risk_officer (LLM): judges the debate and challenges each TAKE. It can only
-  make an order smaller, never bigger.
-- gate (code): checks every claim against the data (checked vetoes, checked exit
-  reasons), and sizes every buy with the risk check. The AI never sizes an order.
-- act (code): sends approved orders to the executor (shadow book or Wallex).
-- reflect (LLM): after a trade closes, writes one lesson to long-term memory.
-- journal (code): logs the whole cycle, and keeps a short summary for the next cycles.
+- sense (code): features of every liquid allowed Toman market, whole-market context, our account, and our
+  positions with their exit plans.
+- analyst (AI): a ReAct agent with read-only tools (Wallex REST and the Wallex MCP server underneath),
+  trader skills (skills/*.md), lessons from past trades and its own last cycles. It decides what a trader
+  decides: which markets, whether to buy, how much to risk, where the stop is, how and when to exit, maker or
+  taker, and which positions to sell. Setups and past results are evidence it reads, not gates.
+- bull, bear (AI, in parallel): argue for and against each buy the analyst proposes.
+- officer (AI): judges the debate. For each buy: approve, reduce the risk, or reject.
+- gate (code): only the hard envelope (risk.Envelope): allowed markets, never all-in, the stop range, the risk
+  range, the daily-loss and drawdown halts, what the book can take, the end of trading. It sizes each buy from
+  the agent's risk and stop.
+- act (code): orders to the shadow book or Wallex. reflect (AI): one lesson per closed trade.
+  journal (code): logs the cycle and keeps a line for the next cycles.
 
-Memory. Short term: the graph's state is saved after every cycle (SQLite
-checkpointer), so the agent sees what it thought in its last cycles. Long term:
-lessons and closed trades live in a SQLite store, and the agent can recall them.
+Memory. Short term: the graph's state is saved after every cycle (SQLite checkpointer). Long term: closed
+trades, lessons and each position's thesis live in a SQLite store.
 
-AI suggests, code decides (ROADMAP rule 7). If the AI fails, nothing is bought.
-After SAFE_AFTER failed analyst cycles in a row, the bot is in safe mode: no
-debate and no officer (fewer calls) until the analyst answers again.
+If the AI fails, nothing is bought, and held positions keep their exit plans and stops.
+After SAFE_AFTER failed analyst cycles in a row, or over the daily token budget, the debate and officer are skipped.
 """
 
 import json
+import math
 import operator
 import sqlite3
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from statistics import pstdev
 from typing import Annotated, Any, TypedDict
 
 from langchain.agents import create_agent
@@ -53,68 +47,58 @@ from langgraph.store.sqlite import SqliteStore
 
 from wx.features import FEATURES
 from wx.llm import LLMError, parse_json
-from wx.risk import (
-    AGENT_LIMITS,
-    DEFAULT_MODE,
-    MODE_ORDER,
-    RISK_MODES,
-    WIDE_SETUPS,
-    Account,
-    Limits,
-    capped,
-    check_buy,
-    edge_problem,
-    mode_cap,
-)
+from wx.risk import ENVELOPE, Account, Envelope, clamp, size_plan
 from wx.setups import SETUPS
-from wx.veto import VETOES
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 RECENT_CYCLES = 8  # cycle summaries the agent sees from its short-term memory
-MAX_TOOL_ROUNDS = 10
-TAKE_PROFIT_NET_PCT = 1.0  # exit reason take_profit: the gain after a round trip is at least this
-ROUND_TRIP_PCT = 0.55  # maker in, taker out, a little spread
-OFFICER_CUT = 0.5  # a REDUCE from the risk officer halves the risk
+MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
-TOKEN_BUDGET = 6_000_000  # AI tokens a UTC day, about 90,000 a cycle on all liquid markets. Above: no debate
+TOKEN_BUDGET = 6_000_000  # AI tokens a UTC day. Above it, no debate and no officer
 AUTO_LESSONS = 6  # lessons put in the analyst's facts, losses first
 
-# 12-hour record of each setup on 18 markets over 120 days: fixed 12-hour hold, 4 ATR stop, net of costs (F41).
-# `scripts/study_12h.py` makes these numbers again.
-RECORD_12H = {
-    "capitulation": {"entries": 229, "avg_net_pct": 0.41, "win_pct": 52, "first_half": 0.06, "second_half": 0.62},
-    "stretched_dip": {"entries": 560, "avg_net_pct": 0.25, "win_pct": 50, "first_half": 0.02, "second_half": 0.42},
-    "dip_toman_weak": {"entries": 189, "avg_net_pct": 0.31, "win_pct": 54, "first_half": 0.32, "second_half": 0.31},
-    "trend_strong": {"entries": 5166, "avg_net_pct": 0.31, "win_pct": 45, "first_half": 0.78, "second_half": -0.51},
-    "every_hour_any_market": {"entries": 37980, "avg_net_pct": -0.26, "win_pct": 38},
-}
-
-# Past results of each risk mode on our 6 markets, limit orders, sold into Toman at the end of each window (F53).
-# avg and worst are % of the account; up is the share of windows that ended up. `scripts/test_risk_modes.py`.
-MODE_RECORD = {
-    "defensive": {"12h": "avg -0.04, up 14%, worst -1.4, best +2.1", "1d": "avg -0.05, up 25%, worst -1.4",
-                  "3d": "avg -0.03, up 47%, worst -1.8, best +2.6", "89d": "+2.8%, drawdown 4.5%"},
-    "normal": {"12h": "avg -0.06, up 23%, worst -2.3, best +2.2", "1d": "avg -0.04, up 35%, worst -2.5",
-               "3d": "avg +0.13, up 45%, worst -2.9, best +10.7", "89d": "+14.7%, drawdown 6.0%"},
-    "active": {"12h": "avg -0.13, up 34%, worst -2.8, best +3.0", "1d": "avg -0.02, up 42%, worst -3.9",
-               "3d": "avg +0.40, up 44%, worst -4.6, best +10.3", "89d": "+25.2%, drawdown 9.0%"},
-    "aggressive": {"12h": "avg -0.19, up 36%, worst -4.2, best +4.5", "1d": "avg -0.01, up 44%, worst -6.4",
-                   "3d": "avg +0.74, up 46%, worst -6.8, best +19.0", "89d": "+42.5%, drawdown 15.3%",
-                   "without_toman_drift_89d": "-4.4%"},
-    "last_12h_2026-10-22_02-14_UTC": {"defensive": "-0.02%", "normal": "+0.20%", "active": "-0.07%",
-                                      "aggressive": "-0.62%", "hold_every_market": "-0.33%"},
-}
-
-EXITS = {
-    "take_profit": f"the position is up at least {TAKE_PROFIT_NET_PCT}% after the round-trip cost",
-    "setup_exit": "the setup's own exit rule holds now",
-    "sell_pressure": VETOES["sell_pressure"][0],
-    "market_crash": VETOES["market_crash"][0],
+# What our tests on the past found, for get_evidence. Each entry names the fact in docs/DECISIONS.md.
+EVIDENCE = {
+    "setups_12h": {
+        "what": "each buy setup, held 12 hours with a 4 ATR stop, 18 TMN markets, 120 days, after costs (F41)",
+        "capitulation (RSI<25, 2 sd under the 20h average)": "+0.41% a trade, both halves positive, 229 trades",
+        "stretched_dip (2.5 sd under the 20h average)": "+0.25%, both halves positive, 560 trades",
+        "dip_toman_weak": "+0.31%, both halves positive, 189 trades",
+        "trend_strong": "+0.31% overall, but +0.78% then -0.51% in the 2nd half",
+        "plain trend (EMA20 > EMA50)": "-0.05%; with the Toman getting stronger -0.32%",
+        "breakout with volume": "+0.19%, +0.71% then -0.33%",
+        "every hour, any market": "-0.26%",
+    },
+    "rule_sets_by_horizon": {
+        "what": "fixed rule sets, sold into Toman at the end of each window, our 6 markets (F53)",
+        "careful (dips only, small)": "12h avg -0.04% (ends up 14%), 3 days -0.03%, 89 days +2.8%",
+        "normal (12-hour setups)": "12h -0.06% (23%), 3 days +0.13%, 89 days +14.7%",
+        "active (plus the trend rule)": "12h -0.13% (34%), 3 days +0.40%, 89 days +25.2%",
+        "aggressive (1.5% risk, 35% a coin)": "12h -0.19% (36%), worst -4.2%; 3 days +0.74%; 89 days +42.5% "
+                                              "(drawdown 15%); without the Toman drift -4.4%",
+        "hold every market": "12h -0.25%, 3 days +1.58% (worst -7.8%)",
+    },
+    "exits": {
+        "what": "exit rules tested on the trend and 12-hour setups (F26, F48)",
+        "fixed take-profit 1.5/2/3%": "worse in every test: it cuts the winners",
+        "trailing stop 4 or 6 ATR": "worse than a fixed stop",
+        "stops 2/3/4 ATR": "every stop lowered the average a little; 4 ATR lowered it least (F19)",
+        "time exit after 12h on dips": "used by the dip setups above",
+    },
+    "time_of_day": "Most of the Toman's fall and coin gains came 01:00-13:00 UTC (Tehran daytime): USDTTMN +0.33% "
+                   "to +0.49% on average then, against +0.07% to +0.09% from 13:00 to 01:00 (F44)",
+    "how_big_12h": "A coin rose 20% in 12 hours in 0.03% of windows on our markets. Perfect hindsight (buy the low, "
+                   "sell the high) reached 20% in under 1% of windows; median +1.5% (F52). Last 12 hours before "
+                   "going live: perfect trader within the caps about +3.5%, holding everything -0.33% (F56)",
+    "ai_record": "When the AI judged freely in past replays, it skipped the trades that later did best (F20, F27). "
+                 "When it shrank weak trades, it helped a little (F33, F51). Base decisions on numbers, not stories.",
+    "costs": "Maker 0.25%, taker 0.30% a side on TMN markets, plus the spread. A round trip costs 0.5% to 1%",
 }
 
 # Features shown per market in the overview. The rest are one tool call away.
 OVERVIEW = ("price", "spread_pct", "ret_1h_pct", "ret_24h_pct", "typical_24h_move_pct", "ema20_vs_ema50_pct",
-            "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "regime", "zero_volume_hours_24", "setups")
+            "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "atr14_pct", "regime",
+            "zero_volume_hours_24", "setups")
 
 
 class State(TypedDict, total=False):
@@ -123,7 +107,6 @@ class State(TypedDict, total=False):
     hours_left: float | None
     table: dict
     micro: dict
-    candidates: list
     positions: dict
     account: dict
     closed: list
@@ -138,8 +121,7 @@ class State(TypedDict, total=False):
     bear: dict
     theses: dict
     fail_streak: int  # failed analyst cycles in a row (kept between cycles)
-    risk_mode: str  # the mode in force (kept between cycles)
-    mode_cap: str  # the most aggressive mode code allows now
+    lean: bool  # safe mode or over the token budget, decided at the start of the cycle
     token_day: int  # the UTC day of tokens_today
     tokens_today: int
     recent: Annotated[list, operator.add]  # short-term memory: one line per cycle, kept by the checkpointer
@@ -150,16 +132,18 @@ class Brain:
     """Everything the graph needs from outside. Tests pass fakes."""
     llm: Any  # a LangChain chat model
     executor: Any  # execution.ShadowExecutor or live.LiveExecutor
-    features: Callable[[], tuple[dict, dict]]  # () -> (table, errors)
-    micro: Callable[[str], dict]  # symbol -> order book and trade flow summary
+    features: Callable[[], tuple[dict, dict]]  # () -> (table, errors) for the liquid markets
+    micro: Callable[[str], dict]  # symbol -> order book and trade flow summary (Wallex MCP)
     closes: Callable[[str, int, int], list[float]]  # (symbol, hours, now) -> hourly closes
     store: Any  # a LangGraph store, for long-term memory
     log: Callable[[dict], None]  # writes one cycle record
     end_at: int | None = None  # Unix time trading ends, if known
-    limits: Limits = AGENT_LIMITS
-    officer: bool = True  # run the risk officer
+    env: Envelope = field(default_factory=lambda: ENVELOPE)
+    officer: bool = True  # run the officer
     debate: bool = True  # run the bull and bear analysts
     candles: Callable[[str, int, int], list] | None = None  # (symbol, minutes per bar, bars) -> bars, via MCP
+    market_list: Callable[[], list[dict]] | None = None  # every allowed TMN market with Wallex's 24h stats
+    market_features: Callable[[str], dict] | None = None  # features of any allowed market, on demand
     halted: bool = False  # set by the runner after repeated failures: no new buys
     clock: Callable[[], float] = time.time
 
@@ -172,10 +156,8 @@ def skills_index() -> dict[str, str]:
     """name -> one-line description, from each skill file's header."""
     out = {}
     for path in sorted(SKILLS_DIR.glob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        lines = text.splitlines()
-        desc = next((line.split(":", 1)[1].strip() for line in lines if line.startswith("description:")), "")
-        out[path.stem] = desc
+        lines = path.read_text(encoding="utf-8").splitlines()
+        out[path.stem] = next((ln.split(":", 1)[1].strip() for ln in lines if ln.startswith("description:")), "")
     return out
 
 
@@ -186,62 +168,59 @@ def read_skill_text(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-ANALYST = """You are the analyst of a trading bot on the Wallex exchange in Iran. Spot only, long only.
-Markets are quoted in Toman (TMN). The result is counted in Toman when trading ends.
+ANALYST = """You are the trader of a bot on the Wallex exchange in Iran. Spot only, long only, Toman (TMN) markets.
+Your goal: the highest Toman value of the account when trading ends. All coins are sold into Toman then.
 
-Code found the candidates below: markets where one of our setups is active now. Each candidate lists the risk
-modes that trade it. You choose the risk mode for this cycle. Code will BUY every candidate your mode trades,
-unless you stop it with a checked veto. You also review each position we hold.
+How the contest scores us: profit is ranked among teams, and a loss scores zero. A smaller drawdown also scores.
+Regular trading scores a little. So: end above the start, as high as you can, without a deep drawdown.
 
-Work like a careful trader:
-0. Choose the risk mode. Read the skill risk-modes, call get_risk_modes and get_portfolio. Weigh the hours left,
-   our result so far, the market, and what each mode did in the past over that horizon. Explain your choice.
-1. Read the skill trader-core first. Read other skills when a candidate needs them.
-2. For each candidate, check its setup record, the shape of its last hours, and its order book and trade
-   flow (get_orderbook reads the Wallex MCP server). Check the whole market (BTCTMN, the Toman).
-3. Recall lessons from past trades on that market or setup.
-4. Decide. Use at most {rounds} tool calls in total. Then answer.
+You decide everything a trader decides: which markets to study, whether to buy, how much to risk, where the
+stop is, the exit plan (target, time limit, sell when the trend turns), maker or taker, and which positions to
+sell. Nothing is bought unless you ask for it. Code only keeps the hard limits in `envelope` and sizes your buy
+from your risk and stop. A bull and a bear analyst will argue each buy you propose, and a judge can reduce or
+reject it.
 
-Rules:
-- Never invent numbers. Use the tools and name the features you used.
-- To stop a candidate, give decision SKIP with one veto from `vetoes`. Code checks the veto against the data.
-  A SKIP without a supported veto is overruled, and the buy goes ahead.
-- conviction (0 to 1) shrinks the order: risk is scaled from 0.5x (0) to 1.0x (1). It can't make it bigger.
-- For a held position: KEEP, or EXIT with one reason from `exit_reasons`. Code checks the reason. Code already
-  sells at the stop, on the setup's exit rule, and before the end of trading.
+Work like a professional:
+1. Read the skill trader-core. Call get_portfolio. Look at the market overview you were given.
+2. Find opportunities: get_regime and get_market on the markets that matter, list_markets for the rest.
+3. Check evidence before you act: get_evidence (what worked here, by horizon and exit), get_orderbook (live book
+   and trades from the Wallex MCP server), get_candles or get_hourly_closes (shape), recall_lessons.
+4. Size and plan each buy: check_order shows what code would do with your risk and stop.
+5. Decide. Use at most {rounds} tool calls. Then answer.
 
-Skills you can read with read_skill: {skills}
+Rules: never invent numbers; name the features you used. A buy with no edge after costs loses money.
+Skills (read_skill): {skills}
 
 Reply with one JSON object and nothing else, in exactly this format:
 {format}"""
 
 FORMAT = """{
-  "risk_mode": "defensive" | "normal" | "active" | "aggressive",
-  "mode_reason": "<why this mode now, at most 300 characters>",
   "market_view": "<the overall picture, at most 300 characters>",
-  "candidates": [{"symbol": "...", "setup": "...", "decision": "TAKE" | "SKIP", "veto": "<only for SKIP>",
-                  "conviction": <0 to 1>, "reason": "<at most 300 characters>", "cited": ["<feature names>"],
-                  "invalidation": "<what would prove this wrong>"}],
-  "positions": [{"symbol": "...", "decision": "KEEP" | "EXIT", "exit_reason": "<only for EXIT>",
-                 "reason": "<at most 200 characters>"}]
+  "approach": "<how hard you trade now and why: time left, our result, regime, evidence; at most 300 characters>",
+  "buys": [{"symbol": "...", "strategy": "<a setup name or your own short label>",
+            "risk_pct": <0.25 to 3: % of equity lost if the stop is hit>,
+            "stop_pct": <1 to 15: stop distance under the entry, %>,
+            "target_pct": <null, or the gain % to sell at>,
+            "max_hours": <the longest hold, 1 to 72>,
+            "exit_on_trend_turn": true | false,
+            "order": "maker" | "taker",
+            "conviction": <0 to 1>, "reason": "<at most 300 characters>", "cited": ["<feature names>"],
+            "invalidation": "<what would prove this wrong>"}],
+  "sells": [{"symbol": "...", "reason": "<at most 200 characters>"}]
 }
-One entry in "candidates" for every candidate, and one in "positions" for every position we hold."""
-
-OFFICER = """You are the risk officer of a trading bot. The analyst wants to buy the candidates below.
-You also judge the debate: a bull analyst and a bear analyst each argued one side.
-Challenge each buy like a sceptical senior trader: what could go wrong in the next 12 hours, given the
-data? You can only answer AGREE or REDUCE (halve the risk). You can't stop a buy and you can't enlarge it.
-REDUCE only when the bear case names a concrete risk in the data that the bull case does not answer.
-Most good setups deserve AGREE.
-
-Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "AGREE" | "REDUCE", "reason": "..."}],
-"note": "<one sentence>"}"""
+"buys" may be empty. Positions not in "sells" are kept with their exit plan."""
 
 DEBATER = """You are the {side} analyst of a trading bot on Wallex (spot, long only, Toman markets).
-For each candidate below, make the strongest honest {side} case for buying it now and holding up to 12 hours.
-Use only the numbers given. Cite feature names. Don't invent numbers. Be short.
+The trader wants to make the buys below. For each, make the strongest honest {side} case, given the data and the
+plan (stop, target, time). Use only the numbers given. Cite feature names. Don't invent numbers. Be short.
 Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most 250 characters>",
 "evidence": ["<feature names>"], "strength": <0 to 1>}}]}}"""
+
+OFFICER = """You are the judge of a trading bot's buys. The trader proposed the buys below, each with a plan, and a
+bull and a bear analyst argued each one. Weigh the arguments against the data and the evidence. For each buy:
+APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
+data. Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
+"risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
 
 REFLECT = """You review closed trades of a trading bot, to write lessons for its future self.
 Read the skill below, then reply with one JSON object:
@@ -261,80 +240,45 @@ def build_graph(b: Brain, checkpointer=None):
             b.executor.sync(table, now)
             account = b.executor.account(table, now)
             positions = b.executor.positions(table, now)
-            held = b.executor.held()
-        candidates = []
-        for s, f in table.items():
-            name = next((n for n in WIDE_SETUPS if n in f.get("setups", [])), None)  # 12-hour setups first
-            if s in held or name is None:
-                continue
-            modes = [m for m, mode in RISK_MODES.items()
-                     if name in mode.setups and not edge_problem(f, mode.limits)]
-            if modes:
-                candidates.append({"symbol": s, "setup": name, "grade": SETUPS[name].grade,
-                                   "meaning": SETUPS[name].meaning, "modes": modes})
-        micro = {}
-        for c in candidates:  # the gate needs the live book to check a sell_pressure veto
-            micro[c["symbol"]] = m = b.micro(c["symbol"])
-            table[c["symbol"]].update({"buy_share": (m.get("flow") or {}).get("buy_share"),
-                                       "imbalance_1pct": (m.get("book") or {}).get("imbalance_1pct")})
         hours_left = None if b.end_at is None else round((b.end_at - now) / 3600, 2)
         day = now // 86400
         tokens = state.get("tokens_today", 0) if state.get("token_day") == day else 0
         theses = {s: (b.store.get(("theses",), s) or _Empty).value for s in positions}
-        cap = mode_cap(account.equity, account.peak, account.day_start)
         return {"cycle": state.get("cycle", 0) + 1, "now": now, "hours_left": hours_left, "table": table,
-                "mode_cap": cap, "risk_mode": capped(state.get("risk_mode") or DEFAULT_MODE, cap),
-                "token_day": day, "tokens_today": tokens, "bull": {}, "bear": {},
-                "theses": {s: t for s, t in theses.items() if t},
-                "micro": micro, "candidates": candidates, "positions": positions, "closed": [],
+                "token_day": day, "tokens_today": tokens, "bull": {}, "bear": {}, "micro": {},
+                "lean": state.get("fail_streak", 0) >= SAFE_AFTER or tokens >= TOKEN_BUDGET,
+                "theses": {s: t for s, t in theses.items() if t}, "positions": positions, "closed": [],
                 "account": {"equity": round(account.equity), "cash": round(account.cash),
-                            "in_coins": round(account.exposure), "peak": round(account.peak)},
+                            "in_coins": round(account.exposure), "peak": round(account.peak),
+                            "day_start": round(account.day_start)},
                 "lessons": [], "plan": {}, "review": {}, "decisions": [], "orders": [], "ai": {},
                 "problems": problems}
 
-    def lean(state: State) -> bool:
-        """Safe mode or over the token budget: skip the debate and the officer."""
-        return state.get("fail_streak", 0) >= SAFE_AFTER or state.get("tokens_today", 0) >= TOKEN_BUDGET
+    def after_sense(state: State) -> str:
+        return "analyst" if state["table"] else "journal"
 
-    def route(state: State):
-        if not state["table"]:
-            return "journal"
-        if not state["candidates"] and not state["positions"]:
-            return "act"
-        if state["candidates"] and b.debate and not lean(state):
+    def after_analyst(state: State):
+        buys = (state.get("plan") or {}).get("buys") or []
+        if not buys or state.get("lean"):  # safe mode or over the token budget: no debate, no officer
+            return "gate"
+        if b.debate:
             return ["bull", "bear"]
-        return "analyst"
-
-    def debater(side: str):
-        def node(state: State) -> State:
-            facts = {"candidates": state["candidates"], "hours_left": state["hours_left"],
-                     "markets": {c["symbol"]: state["table"][c["symbol"]] for c in state["candidates"]},
-                     "books": state["micro"], "btc": state["table"].get("BTCTMN"),
-                     "feature_meanings": FEATURES}
-            try:
-                reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
-                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(json.dumps(facts, default=str))])
-                out = parse_json(text_of(reply))
-                out["tokens"] = (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
-            except Exception as e:  # the analyst decides without this side's case
-                out = {"error": f"{type(e).__name__}: {e}"[:300]}
-            return {side: out}
-        return node
+        return "officer" if b.officer else "gate"
 
     def analyst(state: State) -> State:
         table = state["table"]
-        tools = analyst_tools(b, state)
+        extra: dict[str, dict] = {}
+        micro: dict[str, dict] = {}
+        tools = analyst_tools(b, state, extra, micro)
         prompt = ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT)
         facts = {
             "hours_left": state["hours_left"], "account_tmn": state["account"], "positions": state["positions"],
-            "risk_mode_now": state.get("risk_mode"), "most_aggressive_mode_allowed": state.get("mode_cap"),
-            "candidates": state["candidates"],
-            "markets": {s: {k: f.get(k) for k in OVERVIEW} for s, f in table.items()},
-            "vetoes": {k: v[0] for k, v in VETOES.items()}, "exit_reasons": EXITS,
+            "envelope": asdict(b.env), "markets_overview": {s: {k: f.get(k) for k in OVERVIEW}
+                                                           for s, f in table.items()},
+            "setup_meanings": {k: v.meaning for k, v in SETUPS.items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
-            "bull_case": state.get("bull") or None, "bear_case": state.get("bear") or None,
             "feature_meanings": FEATURES,
         }
         # A LangChain agent (a LangGraph subgraph): the model calls tools until it answers. Middleware caps the
@@ -344,52 +288,67 @@ def build_graph(b: Brain, checkpointer=None):
             ToolRetryMiddleware(max_retries=1, initial_delay=2.0)])
         started = time.monotonic()
         try:
-            ask = json.dumps(facts, default=str) + ("\n\nWhen you are done, answer in the JSON format from your "
-                                                    "instructions: one entry per candidate and one per position.")
-            result = agent.invoke({"messages": [HumanMessage(ask)]},
-                                  {"recursion_limit": 4 * MAX_TOOL_ROUNDS + 10})
+            ask = json.dumps(facts, default=str) + "\n\nWhen you are done, answer in the JSON format you were given."
+            result = agent.invoke({"messages": [HumanMessage(ask)]}, {"recursion_limit": 4 * MAX_TOOL_ROUNDS + 10})
             messages = result["messages"]
-            plan = final_json(b.llm, messages, state)
+            plan = final_json(b.llm, messages)
             error = None
         except Exception as e:  # any AI failure: fail closed, nothing is bought
             messages, plan, error = [], {}, f"{type(e).__name__}: {e}"[:500]
         ai = {"seconds": round(time.monotonic() - started, 1), "steps": tool_steps(messages),
               "tokens": token_count(messages), "error": error, "model": getattr(b.llm, "model_name", "")}
-        spent = ai["tokens"] + sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
-        return {"plan": plan, "ai": ai, "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
-                "tokens_today": state.get("tokens_today", 0) + spent}
+        return {"plan": plan, "ai": ai, "table": {**table, **extra}, "micro": micro,
+                "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
+                "tokens_today": state.get("tokens_today", 0) + ai["tokens"]}
 
-    def risk_officer(state: State) -> State:
-        takes = [c for c in state["plan"].get("candidates", []) if c.get("decision") == "TAKE"]
-        if not b.officer or not takes or lean(state):
+    def debater(side: str):
+        def node(state: State) -> State:
+            buys = state["plan"].get("buys") or []
+            facts = {"buys": buys, "hours_left": state["hours_left"],
+                     "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
+                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN"),
+                     "evidence": EVIDENCE, "feature_meanings": FEATURES}
+            try:
+                reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
+                    [SystemMessage(DEBATER.format(side=side)), HumanMessage(json.dumps(facts, default=str))])
+                out = parse_json(text_of(reply))
+                out["tokens"] = (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
+            except Exception as e:  # the judge decides without this side's case
+                out = {"error": f"{type(e).__name__}: {e}"[:300]}
+            return {side: out}
+        return node
+
+    def officer(state: State) -> State:
+        buys = state["plan"].get("buys") or []
+        if not b.officer or not buys:
             return {"review": {}}
-        facts = {"hours_left": state["hours_left"], "takes": takes, "risk_mode": state["plan"].get("risk_mode"),
-                 "mode_reason": state["plan"].get("mode_reason"),
-                 "markets": {c["symbol"]: state["table"].get(c["symbol"]) for c in takes if c.get("symbol") in
-                             state["table"]},
-                 "books": {s: state["micro"].get(s) for s in (c.get("symbol") for c in takes)},
-                 "bull_case": state.get("bull"), "bear_case": state.get("bear"),
-                 "rules": read_skill_text("risk-and-sizing")}
+        facts = {"hours_left": state["hours_left"], "buys": buys, "approach": state["plan"].get("approach"),
+                 "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
+                 "books": state.get("micro"), "bull_case": state.get("bull"), "bear_case": state.get("bear"),
+                 "account": state["account"], "evidence": EVIDENCE}
+        spent = sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
         try:
             reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
                 [SystemMessage(OFFICER), HumanMessage(json.dumps(facts, default=str))])
-            return {"review": parse_json(text_of(reply))}
-        except Exception as e:  # the officer can only shrink orders, so without it nothing gets bigger
-            return {"review": {"error": f"{type(e).__name__}: {e}"[:300]}}
+            spent += (getattr(reply, "usage_metadata", None) or {}).get("total_tokens", 0)
+            review = parse_json(text_of(reply))
+        except Exception as e:  # without the judge, the trader's plan stands inside the envelope
+            review = {"error": f"{type(e).__name__}: {e}"[:300]}
+        return {"review": review, "tokens_today": state.get("tokens_today", 0) + spent}
 
     def gate(state: State) -> State:
-        decisions, problems, mode = check_plan(state)
-        return {"decisions": decisions, "problems": state["problems"] + problems, "risk_mode": mode}
+        decisions, problems = check_plan(state, b.env)
+        return {"decisions": decisions, "problems": state["problems"] + problems}
 
     def act(state: State) -> State:
         table, now, orders = state["table"], state["now"], []
         with b.executor.lock:
-            if state["hours_left"] is not None and state["hours_left"] * 60 <= b.limits.flatten_minutes:
+            if state["hours_left"] is not None and state["hours_left"] * 60 <= b.env.flatten_minutes:
                 b.executor.flatten(table, now)
                 orders.append({"action": "FLATTEN", "reason": "end of trading"})
             for d in state.get("decisions", []):
                 if d["action"] == "SELL":
-                    b.executor.sell(d["symbol"], table[d["symbol"]], now, d["reason"])
+                    b.executor.sell(d["symbol"], table.get(d["symbol"]), now, d["reason"])
                     orders.append({"symbol": d["symbol"], "action": "SELL", "reason": d["reason"]})
             account = b.executor.account(table, now)
             for d in state.get("decisions", []):
@@ -399,16 +358,17 @@ def build_graph(b: Brain, checkpointer=None):
                 if b.halted:
                     d["verdict"] = {"tmn": 0, "rule": "halted", "reason": "rejected: halted after repeated failures"}
                     continue
-                limits = RISK_MODES[state.get("risk_mode") or DEFAULT_MODE].limits
-                v = check_buy(f, account, 0.0, limits, d["scale"], state["hours_left"], b.executor.ledger(), now,
-                              d["symbol"])
+                book = ((state.get("micro") or {}).get(d["symbol"]) or {}).get("book") or {}
+                v = size_plan(f, account, d["risk_pct"], d["stop_pct"], b.env, b.executor.ledger(), now,
+                              state["hours_left"], book.get("ask_tmn_within_1pct"))
                 d["verdict"] = {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
                 if v.tmn:
-                    result = b.executor.buy(d["symbol"], d["setup"], f, v, now)
-                    orders.append({"symbol": d["symbol"], "action": "BUY", "tmn": v.tmn, **result})
-                    if result.get("placed"):  # the analyst sees its own thesis while it holds the position
-                        b.store.put(("theses",), d["symbol"], {"setup": d["setup"], "reason": d["reason"],
-                                                               "invalidation": d["invalidation"], "t": now})
+                    exits = {k: d[k] for k in ("target_pct", "max_hours", "trend_exit", "order")}
+                    result = b.executor.buy(d["symbol"], d["strategy"], f, v, now, exits)
+                    orders.append({"symbol": d["symbol"], "action": "BUY", "tmn": v.tmn, **exits, **result})
+                    if result.get("placed"):  # the trader sees its own thesis while it holds the position
+                        b.store.put(("theses",), d["symbol"], {"strategy": d["strategy"], "reason": d["reason"],
+                                                               "invalidation": d["invalidation"], **exits, "t": now})
                     account = b.executor.account(table, now)
             closed = b.executor.drain_closed()  # from this cycle's sync and sells, and the guard since the last cycle
         return {"orders": orders, "closed": closed, "decisions": state.get("decisions", [])}
@@ -427,8 +387,7 @@ def build_graph(b: Brain, checkpointer=None):
         except Exception as e:  # the trades are still stored below, without a lesson
             problems.append(f"reflect failed: {type(e).__name__}: {e}"[:300])
         for trade in closed:
-            key = f"{trade['symbol']}_{trade.get('entry_t') or trade.get('placed_t')}"
-            b.store.put(("trades",), key, trade)
+            b.store.put(("trades",), f"{trade['symbol']}_{trade.get('entry_t') or trade.get('placed_t')}", trade)
         nets = {t["symbol"]: t.get("net_pct") for t in closed}
         for i, lesson in enumerate(lessons):
             if isinstance(lesson, dict) and lesson.get("lesson"):
@@ -442,26 +401,23 @@ def build_graph(b: Brain, checkpointer=None):
         return {"lessons": lessons, "problems": state["problems"] + problems}
 
     def journal(state: State) -> State:
-        record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "candidates",
-                                             "micro", "plan", "review", "decisions", "orders", "closed",
-                                             "lessons", "ai", "problems", "bull", "bear", "theses",
-                                             "fail_streak", "tokens_today", "risk_mode", "mode_cap")}
+        record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "micro", "plan",
+                                             "review", "decisions", "orders", "closed", "lessons", "ai", "problems",
+                                             "bull", "bear", "theses", "fail_streak", "tokens_today")}
         record.update(decided_at=state.get("now"), role="brain", markets=state.get("table"),
                       executor=b.executor.kind)
         b.log(record)
-        summary = cycle_summary(state)
-        return {"recent": [summary]}
+        return {"recent": [cycle_summary(state)]}
 
     g = StateGraph(State)
-    for name, fn in [("sense", sense), ("bull", debater("bull")), ("bear", debater("bear")), ("analyst", analyst),
-                     ("risk_officer", risk_officer), ("gate", gate), ("act", act), ("reflect", reflect),
-                     ("journal", journal)]:
+    for name, fn in [("sense", sense), ("analyst", analyst), ("bull", debater("bull")), ("bear", debater("bear")),
+                     ("officer", officer), ("gate", gate), ("act", act), ("reflect", reflect), ("journal", journal)]:
         g.add_node(name, fn)
     g.add_edge(START, "sense")
-    g.add_conditional_edges("sense", route, ["bull", "bear", "analyst", "act", "journal"])
-    g.add_edge(["bull", "bear"], "analyst")  # the analyst waits for both sides
-    g.add_edge("analyst", "risk_officer")
-    g.add_edge("risk_officer", "gate")
+    g.add_conditional_edges("sense", after_sense, ["analyst", "journal"])
+    g.add_conditional_edges("analyst", after_analyst, ["bull", "bear", "officer", "gate"])
+    g.add_edge(["bull", "bear"], "officer")  # the judge waits for both sides
+    g.add_edge("officer", "gate")
     g.add_edge("gate", "act")
     g.add_edge("act", "reflect")
     g.add_edge("reflect", "journal")
@@ -469,15 +425,95 @@ def build_graph(b: Brain, checkpointer=None):
     return g.compile(checkpointer=checkpointer, store=b.store)
 
 
-def analyst_tools(b: Brain, state: State) -> list:
-    """Read-only tools for the analyst. They only see data up to this moment."""
+def hurst(closes: list[float]) -> float | None:
+    """Hurst exponent of hourly log returns by rescaled range: under 0.4 reverts, over 0.6 trends."""
+    if len(closes) < 40:
+        return None
+    rets = [math.log(b / a) for a, b in zip(closes, closes[1:]) if a > 0 and b > 0]
+    points = []
+    for lag in (8, 12, 16, 24, 32):
+        rs = []
+        for i in range(0, len(rets) - lag + 1, lag):
+            chunk = rets[i:i + lag]
+            mean = sum(chunk) / lag
+            dev, low, high = 0.0, 0.0, 0.0
+            for r in chunk:
+                dev += r - mean
+                low, high = min(low, dev), max(high, dev)
+            s = pstdev(chunk)
+            if s > 0:
+                rs.append((high - low) / s)
+        if rs:
+            points.append((math.log(lag), math.log(sum(rs) / len(rs))))
+    if len(points) < 3:
+        return None
+    mx, my = sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
+    num = sum((x - mx) * (y - my) for x, y in points)
+    den = sum((x - mx) ** 2 for x, _ in points)
+    return round(num / den, 2) if den else None
+
+
+def regime_of(f: dict, h: float | None) -> dict:
+    """The 4-quadrant regime of the installed regime-detection skill, with its playbook."""
+    vol = f.get("atr_pctile_100")
+    vol_regime = "unknown" if vol is None else "low" if vol < 0.3 else "high" if vol > 0.7 else "normal"
+    adx = f.get("adx14") or 0
+    trend = "trending" if adx > 25 else "ranging" if adx < 20 else "transitional"
+    direction = "up" if (f.get("ema20_slope_5h_pct") or 0) > 0 and (f.get("ema20_vs_ema50_pct") or 0) > 0 \
+        else "down" if (f.get("ema20_slope_5h_pct") or 0) < 0 and (f.get("ema20_vs_ema50_pct") or 0) < 0 \
+        else "neutral"
+    volume = "high" if (f.get("vol_ratio_20") or 0) > 1.5 else "low" if (f.get("vol_ratio_20") or 1) < 0.5 \
+        else "normal"
+    playbook = {
+        ("low", "trending"): "clean trend: trend following, normal stops",
+        ("normal", "trending"): "trend: trend following",
+        ("high", "trending"): "volatile trend: momentum at half size, wide stops",
+        ("low", "ranging"): "quiet range: mean reversion",
+        ("normal", "ranging"): "range: mean reversion at the edges",
+        ("high", "ranging"): "choppy: a quarter size or sit out",
+    }.get((vol_regime, trend), "transition: small size or wait")
+    return {"volatility": vol_regime, "trend": trend, "direction": direction, "volume": volume, "hurst_100h": h,
+            "mean_reversion": None if h is None else "reverting" if h < 0.4 else "trending" if h > 0.6 else "random",
+            "playbook": playbook}
+
+
+def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
+    """Read-only tools for the trader. They only see data up to this moment."""
     table, now = state["table"], state["now"]
-    cache: dict[str, dict] = dict(state.get("micro") or {})
+
+    def features_of(symbol: str) -> dict | None:
+        if symbol in table:
+            return table[symbol]
+        if symbol not in extra and b.market_features is not None:
+            try:
+                f = b.market_features(symbol)
+            except Exception as error:  # a market without enough history, or a Wallex error
+                return {"error": f"{type(error).__name__}: {error}"[:200]}
+            for k in ("usdt_trend_up", "btc_ret_24h_pct"):  # the whole-market context, as in the overview
+                f[k] = next((g.get(k) for g in table.values()), None)
+            extra[symbol] = f
+        return extra.get(symbol)
+
+    @tool
+    def list_markets() -> list:
+        """Every allowed Toman market on Wallex now, with its 24-hour Toman volume and price change from Wallex's
+        stats, and whether it is in your overview. Use get_market for the features of any of them."""
+        if b.market_list is None:
+            return [{"symbol": s, "in_overview": True} for s in table]
+        return [{**m, "in_overview": m.get("symbol") in table} for m in b.market_list()]
 
     @tool
     def get_market(symbol: str) -> dict:
-        """All features of one market right now (names and meanings as in feature_meanings)."""
-        return table.get(symbol) or {"error": f"unknown market {symbol}; markets: {sorted(table)}"}
+        """All features of one allowed market right now (names and meanings as in feature_meanings)."""
+        return features_of(symbol) or {"error": f"unknown market {symbol}"}
+
+    @tool
+    def get_regime(symbol: str) -> dict:
+        """The market's regime: volatility, trend, direction, volume, Hurst exponent, and the playbook for it."""
+        f = features_of(symbol)
+        if not f or "error" in f:
+            return f or {"error": f"unknown market {symbol}"}
+        return regime_of(f, hurst(b.closes(symbol, 100, now)))
 
     @tool
     def get_hourly_closes(symbol: str, hours: int = 24) -> list:
@@ -486,24 +522,57 @@ def analyst_tools(b: Brain, state: State) -> list:
         return [round((c / closes[0] - 1) * 100, 2) for c in closes] if closes else []
 
     @tool
-    def get_orderbook(symbol: str) -> dict:
-        """Live order book and the last 50 trades of one market, from the Wallex MCP server: spread, Toman within
-        1% of the price per side, imbalance, buy share of traded Toman, trades per minute."""
-        if symbol not in cache:
-            cache[symbol] = b.micro(symbol)
-        return cache[symbol]
+    def get_candles(symbol: str, minutes: int = 15, bars: int = 16) -> list:
+        """Recent candles from the Wallex MCP server: `minutes` per bar (5, 15 or 60), the last `bars` (at most 24).
+        Prices are % from the first open."""
+        if b.candles is None:
+            return [{"error": "no candle source"}]
+        return b.candles(symbol, minutes if minutes in (5, 15, 60) else 15, max(2, min(int(bars), 24)))
 
     @tool
-    def get_setup_record(setup: str) -> dict:
-        """How a setup did over 12 hours in 120 days of history (F41), and our own closed trades with it."""
-        ours = [i.value for i in b.store.search(("trades",), filter={"setup": setup}, limit=50)]
-        nets = [t["net_pct"] for t in ours if t.get("net_pct") is not None]
-        return {"history_12h": RECORD_12H.get(setup, "no record"), "baseline": RECORD_12H["every_hour_any_market"],
-                "our_trades": {"closed": len(nets), "avg_net_pct": round(sum(nets) / len(nets), 2) if nets else None}}
+    def get_orderbook(symbol: str) -> dict:
+        """The live book and the last 50 trades from the Wallex MCP server: spread, Toman within 1% per side,
+        imbalance, buyer share, trades per minute, and the cost of filling 500k and 1.25M TMN."""
+        if symbol not in micro:
+            micro[symbol] = b.micro(symbol)
+        return micro[symbol]
+
+    @tool
+    def get_evidence(topic: str = "all") -> dict:
+        """What our tests on the past found. Topics: setups_12h, rule_sets_by_horizon, exits, time_of_day,
+        how_big_12h, ai_record, costs, or all."""
+        return EVIDENCE if topic not in EVIDENCE else {topic: EVIDENCE[topic]}
+
+    @tool
+    def get_portfolio() -> dict:
+        """Our account now: equity, cash, positions with their exit plans, today's result, drawdown, buys in the
+        last 24 hours, and the hard limits (envelope)."""
+        acc, ledger = state["account"], b.executor.ledger()
+        peak, start = acc.get("peak") or 1, acc.get("day_start") or acc.get("equity") or 1
+        return {"account": acc, "positions": state["positions"], "hours_left": state["hours_left"],
+                "today_pct": round(((acc.get("equity") or 0) / start - 1) * 100, 2),
+                "drawdown_pct": round((1 - (acc.get("equity") or 0) / peak) * 100, 2),
+                "since_start_pct": round(((acc.get("equity") or 0) / 5_000_000 - 1) * 100, 2),
+                "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "envelope": asdict(b.env)}
+
+    @tool
+    def check_order(symbol: str, risk_pct: float = 1.0, stop_pct: float = 4.0) -> dict:
+        """What code would do with a buy of this market with your risk and stop: size in Toman and the limit that
+        set it, or why it refuses. Nothing is ordered."""
+        f = features_of(symbol)
+        if not f or "error" in f:
+            return f or {"error": f"unknown market {symbol}"}
+        acc = state["account"]
+        account = Account(acc["equity"], acc["cash"], acc["in_coins"], acc["peak"], acc.get("day_start") or 0)
+        book = (micro.get(symbol) or {}).get("book") or {}
+        v = size_plan(f, account, risk_pct, stop_pct, b.env, b.executor.ledger(), now, state["hours_left"],
+                      book.get("ask_tmn_within_1pct"))
+        return {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": v.stop_pct,
+                "pct_of_equity": round(v.tmn / max(acc["equity"], 1) * 100, 1)}
 
     @tool
     def recall_lessons(symbol: str = "", setup: str = "") -> list:
-        """Lessons written after our past trades, newest first. Filter by market and/or setup, or leave both empty."""
+        """Lessons written after our past trades, losses first. Filter by market and/or setup, or leave both empty."""
         return recall(b.store, {k: v for k, v in (("symbol", symbol), ("setup", setup)) if v} or None, 8)
 
     @tool
@@ -511,56 +580,8 @@ def analyst_tools(b: Brain, state: State) -> list:
         """The full text of one trader skill (see the skills list in your instructions)."""
         return read_skill_text(name)
 
-    @tool
-    def get_candles(symbol: str, minutes: int = 15, bars: int = 16) -> list:
-        """Recent candles of one market from the Wallex MCP server: `minutes` per bar (5, 15 or 60), the last `bars`
-        bars (at most 24). Prices are % from the first open, so the shape is easy to read."""
-        if b.candles is None:
-            return [{"error": "no candle source"}]
-        return b.candles(symbol, minutes if minutes in (5, 15, 60) else 15, max(2, min(int(bars), 24)))
-
-    @tool
-    def get_portfolio() -> dict:
-        """Our account now: equity, cash, positions, drawdown from the peak, buys in the last 24 hours, losses in a
-        row, hours left, and the risk limits code applies."""
-        acc, ledger = state["account"], b.executor.ledger()
-        peak = acc.get("peak") or acc.get("equity") or 1
-        return {"account": acc, "positions": state["positions"], "hours_left": state["hours_left"],
-                "drawdown_pct": round((1 - (acc.get("equity") or 0) / peak) * 100, 2),
-                "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "losses_in_a_row": ledger.streak(),
-                "risk_mode_now": state.get("risk_mode"), "most_aggressive_mode_allowed": state.get("mode_cap")}
-
-    @tool
-    def get_risk_modes() -> dict:
-        """The risk modes you can choose: what each trades, its limits, and how it did in the past over 12 hours,
-        1 day, 3 days and 89 days (F53). Also the most aggressive mode code allows now."""
-        return {"modes": {m: {"meaning": mode.meaning, "setups": list(mode.setups),
-                              "risk_per_trade_pct": mode.limits.risk_per_trade * 100,
-                              "max_in_one_coin_pct": mode.limits.max_position * 100,
-                              "max_in_coins_pct": mode.limits.max_exposure * 100,
-                              "past_results": MODE_RECORD.get(m)} for m, mode in RISK_MODES.items()},
-                "most_aggressive_allowed_now": state.get("mode_cap"), "hours_left": state["hours_left"]}
-
-    @tool
-    def check_order(symbol: str, conviction: float = 0.5, risk_mode: str = "normal") -> dict:
-        """What the risk check would do with a buy of this candidate now in a risk mode: size in Toman, or why it
-        refuses. Nothing is ordered."""
-        c = next((c for c in state["candidates"] if c["symbol"] == symbol), None)
-        if c is None:
-            return {"error": f"{symbol} is not a candidate"}
-        mode = RISK_MODES.get(capped(risk_mode if risk_mode in RISK_MODES else DEFAULT_MODE, state["mode_cap"]))
-        if c["setup"] not in mode.setups:
-            return {"tmn": 0, "reason": f"{c['setup']} is not traded in this mode"}
-        grade = 1.0 if c["grade"] == "A" or not mode.graded else mode.limits.grade_b_scale
-        scale = grade * (0.5 + 0.5 * min(max(conviction, 0), 1))
-        acc = state["account"]
-        account = Account(acc["equity"], acc["cash"], acc["in_coins"], acc["peak"], acc["equity"])
-        v = check_buy(table[symbol], account, 0.0, mode.limits, scale, state["hours_left"], b.executor.ledger(), now,
-                      symbol)
-        return {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
-
-    return [get_risk_modes, get_market, get_hourly_closes, get_candles, get_orderbook, get_setup_record,
-            get_portfolio, check_order, recall_lessons, read_skill]
+    return [get_portfolio, list_markets, get_market, get_regime, get_evidence, get_orderbook, get_candles,
+            get_hourly_closes, check_order, recall_lessons, read_skill]
 
 
 def recall(store, filter_: dict | None, limit: int) -> list:
@@ -570,77 +591,49 @@ def recall(store, filter_: dict | None, limit: int) -> list:
     return [{k: i.value.get(k) for k in ("symbol", "setup", "net_pct", "lesson")} for i in items]
 
 
-def check_plan(state: State) -> tuple[list[dict], list[str], str]:
-    """Turn the AI's plan into checked decisions and the risk mode. Code has the last word on every claim."""
+def check_plan(state: State, env: Envelope = ENVELOPE) -> tuple[list[dict], list[str]]:
+    """The trader's plan, after the judge, as decisions. Code only fills gaps and keeps values in the envelope."""
     table, plan, problems = state["table"], state.get("plan") or {}, []
-    previous, cap = state.get("risk_mode") or DEFAULT_MODE, state.get("mode_cap") or MODE_ORDER[-1]
-    if not plan:  # the AI failed: fail closed, no new buys. Held positions keep their code exits.
+    if not plan:  # the AI failed: fail closed, no new buys. Held positions keep their exit plans and stops.
         problems.append("no plan from the AI, so no new buys: " + str((state.get("ai") or {}).get("error")))
-        return [], problems, previous
-    asked = plan.get("risk_mode")
-    if asked not in RISK_MODES:
-        problems.append(f"risk mode {asked!r} unknown: keeping {previous}")
-        asked = previous
-    mode_name = capped(asked, cap)
-    if mode_name != asked:
-        problems.append(f"risk mode {asked} capped to {mode_name} after losses")
-    mode = RISK_MODES[mode_name]
-    officer = {r.get("symbol"): r for r in (state.get("review") or {}).get("reviews", []) if isinstance(r, dict)}
-    said = {c.get("symbol"): c for c in plan.get("candidates", []) if isinstance(c, dict)}
-    decisions = []
-    for c in state["candidates"]:
-        s, f = c["symbol"], table[c["symbol"]]
-        a = said.get(s) or {}
-        conviction = a.get("conviction")
-        conviction = min(max(float(conviction), 0.0), 1.0) if isinstance(conviction, int | float) else 0.5
-        d = {"symbol": s, "setup": c["setup"], "grade": c["grade"], "ai_decision": a.get("decision"),
-             "conviction": conviction, "reason": str(a.get("reason", ""))[:400], "cited": a.get("cited", []),
-             "invalidation": str(a.get("invalidation", ""))[:300], "problems": []}
-        if c["setup"] not in mode.setups or mode_name not in c.get("modes", MODE_ORDER):
-            decisions.append({**d, "action": "HOLD", "veto": "", "scale": 0.0,
-                              "problems": [f"not traded in risk mode {mode_name}"]})
+        return [], problems
+    review = {r.get("symbol"): r for r in (state.get("review") or {}).get("reviews", []) if isinstance(r, dict)}
+    held, decisions, seen = set(state.get("positions") or {}), [], set()
+    for x in plan.get("buys") or []:
+        if not isinstance(x, dict):
             continue
-        if not a:
-            d["problems"].append("the AI said nothing about this candidate: the buy goes ahead")
-        veto = a.get("veto") or ""
-        if a.get("decision") == "SKIP":
-            if veto in VETOES and VETOES[veto][1](f, table):
-                decisions.append({**d, "action": "HOLD", "veto": veto, "scale": 0.0})
-                continue
-            d["problems"].append(f"veto {veto!r} overruled: the data does not support it" if veto
-                                 else "SKIP without a veto: the buy goes ahead")
-        grade = 1.0 if c["grade"] == "A" or not mode.graded else mode.limits.grade_b_scale
-        scale = grade * (0.5 + 0.5 * conviction)
-        if (officer.get(s) or {}).get("verdict") == "REDUCE":
-            scale *= OFFICER_CUT
-            d["officer"] = officer[s].get("reason", "")
-        decisions.append({**d, "action": "BUY", "veto": "", "scale": round(scale, 3)})
+        s = x.get("symbol")
+        if s in seen or s in held:
+            problems.append(f"BUY {s}: already held or asked twice")
+            continue
+        seen.add(s)
+        if s not in table:
+            problems.append(f"BUY {s}: no features for this market (not allowed, or not looked at)")
+            continue
+        risk = clamp(x.get("risk_pct"), 0.05, env.max_risk_pct, 0.5)
+        d = {"symbol": s, "strategy": str(x.get("strategy") or "agent")[:40], "risk_pct": risk,
+             "stop_pct": clamp(x.get("stop_pct"), env.min_stop_pct, env.max_stop_pct, 4.0),
+             "target_pct": clamp(x.get("target_pct"), 0.5, 100, 0) if x.get("target_pct") else 0.0,
+             "max_hours": clamp(x.get("max_hours"), 1, env.max_hours, 12),
+             "trend_exit": bool(x.get("exit_on_trend_turn")),
+             "order": "taker" if x.get("order") == "taker" else "maker",
+             "conviction": clamp(x.get("conviction"), 0, 1, 0.5), "reason": str(x.get("reason", ""))[:400],
+             "cited": x.get("cited", []), "invalidation": str(x.get("invalidation", ""))[:300], "problems": []}
+        r = review.get(s) or {}
+        if r.get("verdict") == "REJECT":
+            decisions.append({**d, "action": "HOLD", "judge": r.get("reason", "")})
+            continue
+        if r.get("verdict") == "REDUCE":
+            d["risk_pct"] = min(risk, clamp(r.get("risk_pct"), 0.05, env.max_risk_pct, risk / 2))
+            d["judge"] = r.get("reason", "")
+        decisions.append({**d, "action": "BUY"})
     decisions.sort(key=lambda d: -d["conviction"])  # the strongest gets the free cash first
-
-    for p in plan.get("positions", []):
-        if not isinstance(p, dict) or p.get("decision") != "EXIT":
-            continue
-        s, reason = p.get("symbol"), p.get("exit_reason") or ""
-        pos = state["positions"].get(s)
-        if not pos or "entry" not in pos:
-            problems.append(f"EXIT {s}: we hold no open position there")
-            continue
-        if exit_supported(reason, pos, table[s], table):
-            decisions.append({"symbol": s, "action": "SELL", "reason": f"{reason}: {p.get('reason', '')}"[:300]})
-        else:
-            problems.append(f"EXIT {s} with {reason!r} overruled: the data does not support it")
-    return decisions, problems, mode_name
-
-
-def exit_supported(reason: str, pos: dict, f: dict, table: dict) -> bool:
-    if reason == "take_profit":
-        return (pos.get("pnl_pct") or 0) - ROUND_TRIP_PCT >= TAKE_PROFIT_NET_PCT
-    if reason == "setup_exit":
-        setup = SETUPS.get(pos.get("setup", ""))
-        return bool(setup and setup.exit(f, pos.get("hours_held") or 0))
-    if reason in ("sell_pressure", "market_crash"):
-        return VETOES[reason][1](f, table)
-    return False
+    for x in plan.get("sells") or []:
+        if isinstance(x, dict) and x.get("symbol") in held:
+            decisions.append({"symbol": x["symbol"], "action": "SELL", "reason": str(x.get("reason", ""))[:300]})
+        elif isinstance(x, dict):
+            problems.append(f"SELL {x.get('symbol')}: we hold no position there")
+    return decisions, problems
 
 
 def text_of(message) -> str:
@@ -653,36 +646,33 @@ def text_of(message) -> str:
     return text.strip()
 
 
-def plan_problem(plan: dict, state: State) -> str | None:
+def plan_problem(plan: dict) -> str | None:
     """Why a plan does not have the shape code needs, or None if it does."""
-    if state["candidates"] and not isinstance(plan.get("candidates"), list):
-        return 'no "candidates" list'
-    if state["positions"] and not isinstance(plan.get("positions"), list):
-        return 'no "positions" list'
-    missing = {c["symbol"] for c in state["candidates"]} - {
-        c.get("symbol") for c in plan.get("candidates", []) if isinstance(c, dict)}
-    return f"no entry for {sorted(missing)}" if missing else None
+    for key in ("buys", "sells"):
+        if not isinstance(plan.get(key, []), list):
+            return f'"{key}" is not a list'
+    if "buys" not in plan and "sells" not in plan:
+        return 'no "buys" and no "sells"'
+    return None
 
 
-def final_json(llm, messages: list, state: State) -> dict:
+def final_json(llm, messages: list) -> dict:
     """The JSON plan in the agent's last answer. If it is broken or has the wrong shape, ask once more in JSON mode."""
     last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
     try:
         plan = parse_json(text_of(last))
-        problem = plan_problem(plan, state)
+        problem = plan_problem(plan)
     except (LLMError, AttributeError) as error:
         problem = f"not valid JSON ({error})"
     if problem is None:
         return plan
-    retry = HumanMessage(
-        f"Your last answer has a problem: {problem}. Give your final decisions again, as one JSON object in "
-        f"exactly this format:\n{FORMAT}\nCandidates: {json.dumps(state['candidates'])}\n"
-        f"Positions: {json.dumps(sorted(state['positions']))}")
+    retry = HumanMessage(f"Your last answer has a problem: {problem}. Give your final decisions again, as one JSON "
+                         f"object in exactly this format:\n{FORMAT}")
     clean = [m for m in messages if not (isinstance(m, AIMessage) and m.tool_calls)
              and not isinstance(m, ToolMessage)]
     reply = llm.bind(response_format={"type": "json_object"}).invoke(clean + [retry])
     plan = parse_json(text_of(reply))
-    problem = plan_problem(plan, state)
+    problem = plan_problem(plan)
     if problem:  # still wrong: treat it as a failed AI call, so nothing is bought
         raise LLMError(f"the plan is still unusable: {problem}")
     return plan
@@ -702,12 +692,11 @@ def token_count(messages: list) -> int:
 def cycle_summary(state: State) -> str:
     """One line for the agent's short-term memory."""
     t = time.strftime("%H:%M", time.gmtime(state.get("now", 0)))
-    acts = [f"{d['action']} {d['symbol']}" + (f" ({d.get('veto')})" if d.get("veto") else "")
-            for d in state.get("decisions", []) if d.get("action") in ("BUY", "SELL", "HOLD")]
-    view = (state.get("plan") or {}).get("market_view", "")
+    acts = [f"{d['action']} {d['symbol']}" + (f" {d.get('risk_pct')}% risk" if d["action"] == "BUY" else "")
+            for d in state.get("decisions", [])]
+    plan = state.get("plan") or {}
     eq = (state.get("account") or {}).get("equity")
-    mode = state.get("risk_mode")
-    return f"{t} UTC equity {eq}, mode {mode}: {', '.join(acts) or 'no action'}. {view}"[:400]
+    return f"{t} UTC equity {eq}: {', '.join(acts) or 'no action'}. {plan.get('approach', '')}"[:400]
 
 
 def open_memory(data_dir: Path, name: str):

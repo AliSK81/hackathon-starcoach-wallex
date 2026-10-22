@@ -97,6 +97,13 @@ class History:
         return build_features(hours, minutes, last - half, last + half, t, taker_fee)
 
 
+def exit_rule(max_hours: float = 0.0, trend_exit: bool = False) -> Callable[[dict, float], bool]:
+    """The agent's own exit plan as a rule on (features at an hour, hours held): a time limit, the trend turning."""
+    def rule(g: dict, hours: float) -> bool:
+        return bool((max_hours and hours >= max_hours) or (trend_exit and (g.get("ema20_vs_ema50_pct") or 0) < 0))
+    return rule
+
+
 @dataclass
 class Trade:
     entry_t: int
@@ -107,8 +114,8 @@ class Trade:
 
 
 def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders: str,
-          features_at: Callable[[int], dict | None], now: int | None = None, take_profit_pct: float = 0.0
-          ) -> Trade | None:
+          features_at: Callable[[int], dict | None], now: int | None = None, take_profit_pct: float = 0.0,
+          rule: Callable[[dict, float], bool] | None = None) -> Trade | None:
     """How a buy at t through `setup` plays out, up to `now` (or to the end of the data).
 
     Entry. "taker": at the mid price now. "limit": at the bid, only if the price
@@ -140,7 +147,8 @@ def trade(history: History, setup: str, t: int, f: dict, stop_pct: float, orders
     def closed(exit_t: int, price: float, reason: str) -> Trade:
         return Trade(entry_t, entry, exit_t, (price / entry - 1) * 100 - cost(reason == "stop"), reason)
 
-    stop, rule = entry * (1 - stop_pct / 100), SETUPS[setup].exit
+    stop = entry * (1 - stop_pct / 100)
+    rule = rule or (SETUPS[setup].exit if setup in SETUPS else exit_rule())
     target = entry * (1 + take_profit_pct / 100) if take_profit_pct else None
     start, hour = entry_t, math.ceil(entry_t / HOUR) * HOUR
     while True:

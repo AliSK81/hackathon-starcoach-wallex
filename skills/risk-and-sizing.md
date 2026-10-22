@@ -1,26 +1,29 @@
 ---
 name: risk-and-sizing
-description: The risk rules code applies after you decide. What you control (conviction) and what you don't.
+description: How much to risk on a buy, how code turns your risk and stop into a size, and the hard limits you can't cross.
 ---
-# Risk and sizing (code, not you)
+# Risk and sizing
 
-Code applies these to every buy. You can't skip or loosen them, but you choose the risk mode (skill risk-modes),
-and the mode sets the numbers below.
-- A stop 4 ATR below the entry. The size is set so a stop, plus the round-trip cost, loses at most the mode's risk
-  per trade (0.75% of equity, or 1.5% in aggressive).
-- Defensive only: no buy where the usual 12-hour move is under 1.5 times the round-trip cost.
-- At most 12 to 48 buys in 24 hours, by mode.
-- Grade B setups risk half that, except in aggressive. Your conviction scales the risk again, from 0.5x (conviction 0) to 1.0x (conviction 1).
-- At most 25% of equity in one coin and 60% in coins together (aggressive: 35% and 80%). Never all-in.
-- No new buys after losing 2% in a day, or while equity is 6% below its peak.
-- No new buys in the last 3 hours of trading. Everything is sold into Toman 30 minutes before the end.
-- Data older than 5 minutes: no buy.
+## You choose
+- `risk_pct`: the % of equity you accept to lose if the stop is hit, costs included. Tiers from the
+  position-sizing skill: 0.5-1% for unproven or weak trades, 1-2% for good ones, 2-3% only for the best evidence.
+- `stop_pct`: the stop distance under the entry. Wider than normal noise: about 2 to 4 times `atr14_pct`.
+  A tighter stop gives a bigger size for the same risk, but gets hit more often.
 
-`check_order` shows what the risk check would do with a candidate, without ordering. `get_portfolio` shows the
-limits in force, the drawdown and the buys so far.
+## Code sizes it
+Size = risk_pct of equity / (stop_pct + round-trip cost), then the smallest of:
+- the room in one coin (40% of equity), the room in coins (80% of equity), free cash,
+- half of the Toman resting within 1% on the ask side (what the book can take).
+`check_order` shows the size and which limit set it. Nothing is ordered.
 
-What you control:
-- Take or skip (with a checked veto) each candidate.
-- Your conviction, which can only shrink an order.
-- Selling a held position early, with a checked exit reason.
-- Which candidate gets the free cash first: the highest conviction.
+## Hard limits (envelope): code keeps these whatever you decide
+- Risk per buy at most 3%. Stop between 1% and 15%. Hold at most 72 hours.
+- At most 40% of equity in one coin, 80% in coins. Never all-in.
+- No new buys after losing 4% in a day, or while 10% below the peak (for 24 hours).
+- At most 60 buys in 24 hours. No buys on data older than 5 minutes.
+- No new buys in the last 45 minutes. Everything is sold into Toman 30 minutes before the end.
+
+## Drawdown response (risk-management skill)
+- 0-5% below the peak: normal size.
+- 5-10%: cut your risk by a quarter to a half.
+- Near 10%: code stops new buys.

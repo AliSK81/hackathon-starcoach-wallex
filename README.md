@@ -1,6 +1,6 @@
 # hackathon-starcoach-wallex
 
-A bot that trades on Wallex by itself. A LangGraph agent studies every trade with tools, trader skills and memory. Normal code checks the AI, sizes every order, and sets every stop.
+A bot that trades on Wallex by itself. A LangGraph agent decides every trade with tools, trader skills and memory: which market, how much to risk, the stop and the exit plan. Normal code keeps the hard limits and sizes every order.
 
 Start with [docs/STRATEGY.md](docs/STRATEGY.md): how it trades, the AI's role, risk, and results.
 

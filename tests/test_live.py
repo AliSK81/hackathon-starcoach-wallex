@@ -151,3 +151,20 @@ def test_an_excluded_or_unknown_market_is_never_ordered(ex):
         result = ex.buy(symbol, "trend", f(), Verdict(1_000_000, 4.0, "approved", "approved"), NOW)
         assert not result["placed"] and "not an allowed market" in result["error"]
     assert ex.trader.orders == {}
+
+
+def test_the_agents_exit_plan_target_and_time_limit(ex, monkeypatch):
+    r = ex.buy("SOLTMN", "agent", f(), Verdict(1_000_000, 4.0, "approved", "approved"), NOW,
+               {"target_pct": 3.0, "max_hours": 6, "trend_exit": False, "order": "maker"})
+    ex.trader.fill(r["client_id"])
+    ex.sync({"SOLTMN": f()}, NOW + 60)
+    [p] = ex.positions_
+    assert (p.target_pct, p.max_hours) == (3.0, 6.0)
+    monkeypatch.setattr(live, "fetch_best_prices", lambda s: (Decimal("1031000"), Decimal("1032000")))
+    ex.guard(NOW + 120)
+    assert p.status == "selling" and p.sell_reason == "target"
+
+
+def test_a_taker_buy_is_priced_at_the_ask(ex):
+    r = ex.buy("SOLTMN", "agent", f(), Verdict(1_000_000, 4.0, "approved", "approved"), NOW, {"order": "taker"})
+    assert r["price"] == "1001000"
