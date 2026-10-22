@@ -50,6 +50,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.sqlite import SqliteStore
 
+from wx.closures import NO_BUY_MINUTES, closing
 from wx.features import FEATURES
 from wx.horizon import Profile, profile
 from wx.llm import LLMError, parse_json
@@ -190,6 +191,7 @@ class Brain:
     candles: Callable[[str, int, int], list] | None = None  # (symbol, minutes per bar, bars) -> bars, via MCP
     market_list: Callable[[], list[dict]] | None = None  # every allowed TMN market with Wallex's 24h stats
     market_features: Callable[[str], dict] | None = None  # features of any allowed market, on demand
+    market_closes: Callable[[], dict[str, int]] = dict  # market -> Unix time Wallex closes it (closures.py)
     halted: bool = False  # set by the runner after repeated failures: no new buys
     clock: Callable[[], float] = time.time
 
@@ -251,6 +253,11 @@ Your pace follows the time left (`profile`): with under a day left you are in sp
 on 1, 5 and 15-minute data, and plan holds of minutes to a few hours; a buy that can't work before the end is a
 bad buy. With days or weeks left, slow down and use 1-hour and 4-hour data.
 
+The owner chose aggressive risk (D49). When you see an edge after costs, size like the aggressive rule set:
+risk_pct 1.5 to 3, up to the envelope's limit in one coin, and take more of the good trades rather than waiting
+for perfect ones. A buy still needs an edge after costs: aggressive means bigger and more often, not careless.
+The hard limits and the halts after losses stay.
+
 USDTTMN is a market like the others: holding USDT instead of Toman is a choice you may make, or not, from the
 evidence (usdt_as_cash) and the Toman's trend now. It is sold into Toman at the end like every coin.
 
@@ -299,7 +306,8 @@ Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most
 OFFICER = """You are the judge of a trading bot's buys. The trader proposed the buys below, each with a plan, and a
 bull and a bear analyst argued each one. Weigh the arguments against the data and the evidence. For each buy:
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
-data. Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
+data. The owner chose aggressive risk: don't cut a buy only for its size.
+Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
 "risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
 
 # The same every call, so it sits in the system message, where the provider can cache it.
@@ -364,6 +372,8 @@ def build_graph(b: Brain, checkpointer=None):
             "buys_last_24h": view["buys_last_24h"],
             "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
                                                else OVERVIEW),
+            "markets_closing_utc": {s: time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
+                                    for s, t in b.market_closes().items() if t > state["now"]},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
@@ -447,6 +457,10 @@ def build_graph(b: Brain, checkpointer=None):
                 if d["action"] != "BUY":
                     continue
                 f = table[d["symbol"]]
+                if closing(b.market_closes(), d["symbol"], now, NO_BUY_MINUTES):
+                    d["verdict"] = {"tmn": 0, "rule": "market closes",
+                                    "reason": "rejected: Wallex closes this market soon, we could not sell it"}
+                    continue
                 if b.halted:
                     d["verdict"] = {"tmn": 0, "rule": "halted", "reason": "rejected: halted after repeated failures"}
                     continue

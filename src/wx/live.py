@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from wx.closures import SELL_MINUTES, closing, market_closes
 from wx.markets import load_inactive
 from wx.orders import OrderState, Trader, new_client_id
 from wx.prices import append_log
@@ -70,6 +71,7 @@ class LiveExecutor:
     def __init__(self, trader: Trader, api_key: str, rules: dict[str, MarketRules], data_dir: Path,
                  limits: Limits = Limits(), end_at: int | None = None):
         self.trader, self._key, self.rules, self.limits, self.end_at = trader, api_key, rules, limits, end_at
+        self.data_dir = data_dir
         self.path = data_dir / "live" / "book.json"
         self.log = data_dir / "live" / "orders.jsonl"
         self.lock = threading.RLock()
@@ -308,9 +310,15 @@ class LiveExecutor:
         closed = []
         if self.end_at is not None and self.end_at - now <= self.limits.flatten_minutes * 60:
             return self.flatten({}, now)
+        closes = market_closes(self.data_dir)
         for p in self.active():
             try:
-                if p.status == "open" and p.stop:
+                if closing(closes, p.symbol, now, SELL_MINUTES) and p.status in ("buying", "open"):
+                    if p.status == "buying":  # Wallex will close this market: get out while we still can
+                        self.cancel_buy(p, now)
+                    if p.status == "open":
+                        closed += self.send_sell(p, now, "market closes")
+                elif p.status == "open" and p.stop:
                     bid, _ = fetch_best_prices(p.symbol)
                     if float(bid) <= p.stop:
                         closed += self.send_sell(p, now, "stop")

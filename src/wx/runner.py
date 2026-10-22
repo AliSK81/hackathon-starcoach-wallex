@@ -24,6 +24,7 @@ from pathlib import Path
 
 from wx.brain import Brain, build_graph, open_memory
 from wx.candles import candle_path, load_candles
+from wx.closures import market_closes
 from wx.config import Settings
 from wx.decide import code_version, log_decision
 from wx.features import HOUR, add_context, closed_bars, market_features
@@ -133,7 +134,8 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
 
     return Brain(llm=chat_model(settings, data_dir), executor=executor, features=features,
                  micro=lambda s: microstructure(s, mcp), closes=closes, store=store, log=log, end_at=end_at,
-                 env=env, officer=officer, candles=candles, market_list=market_list, market_features=any_market)
+                 env=env, officer=officer, candles=candles, market_list=market_list, market_features=any_market,
+                 market_closes=lambda: market_closes(data_dir))
 
 
 def report(state: dict) -> str:

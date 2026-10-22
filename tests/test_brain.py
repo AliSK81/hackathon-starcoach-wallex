@@ -284,3 +284,26 @@ def test_cached_tokens_are_counted():
     m = AIMessage("x", usage_metadata={"input_tokens": 9000, "output_tokens": 10, "total_tokens": 9010,
                                        "input_token_details": {"cache_read": 6000}})
     assert cached_tokens([m, AIMessage("y")]) == 6000
+
+
+def test_no_buy_in_a_market_that_closes_soon_and_the_agent_is_told():
+    b, _ = brain([], {"SOLTMN": market()})
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(plan([buy()])))])
+    b.market_closes = lambda: {"SOLTMN": NOW + 30 * 60}
+    SEEN.clear()
+    state = build_graph(b).invoke({})
+    assert not b.executor.bought and state["decisions"][0]["verdict"]["rule"] == "market closes"
+    facts = json.loads(SEEN[0][1].content.split("\n\n")[0])
+    assert "SOLTMN" in facts["markets_closing_utc"]
+    assert "aggressive risk" in SEEN[0][0].content
+
+
+def test_market_closes_file(tmp_path):
+    from wx.closures import closing, market_closes
+    assert market_closes(tmp_path) == {}
+    (tmp_path / "market_closes.json").write_text('{"usdttmn": "2026-10-22T20:15"}', encoding="utf-8")
+    t = market_closes(tmp_path)["USDTTMN"]
+    closes = {"USDTTMN": t}
+    assert closing(closes, "USDTTMN", t - 29 * 60, 30) and not closing(closes, "USDTTMN", t - 31 * 60, 30)
+    (tmp_path / "market_closes.json").write_text("not json", encoding="utf-8")
+    assert market_closes(tmp_path) == {}

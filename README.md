@@ -35,6 +35,7 @@ Every 15 minutes, one cycle of the LangGraph agent ([docs/STRATEGY.md](docs/STRA
 | Command | What it does |
 |---|---|
 | `uv run wx live` | The live book: positions, results, reasons. |
+| `data/market_closes.json` | Markets Wallex will close, e.g. `{"USDTTMN": "2026-10-22T20:15"}` (UTC). No new buys 45 minutes before, held coins sold 30 minutes before (D50). Read every minute. |
 | `uv run wx kill` | Kill switch: cancel every open order and sell every position. A file `data/KILL` does the same inside a running agent. |
 | `uv run wx verify-log --live` | Check the hash chain of the live decision log (`data/live/decisions/`). Without `--live`: the shadow log. |
 | `uv run wx tradelog --live` | Every live order with the AI's reason and the result, as a Markdown table. |

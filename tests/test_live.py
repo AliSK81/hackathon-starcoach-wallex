@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -168,3 +169,18 @@ def test_the_agents_exit_plan_target_and_time_limit(ex, monkeypatch):
 def test_a_taker_buy_is_priced_at_the_ask(ex):
     r = ex.buy("SOLTMN", "agent", f(), Verdict(1_000_000, 4.0, "approved", "approved"), NOW, {"order": "taker"})
     assert r["price"] == "1001000"
+
+
+def test_a_position_is_sold_before_its_market_closes(ex, tmp_path):
+    import json as js
+    ex.buy("SOLTMN", "x", f(), Verdict(500_000, 4.0, "approved", "ok"), NOW)
+    p = ex.positions_[0]
+    ex.trader.fill(p.buy_id)
+    ex.sync({"SOLTMN": f()}, NOW + 60)
+    assert p.status == "open"
+    ex.guard(NOW + 120)
+    assert p.status == "open"  # no close planned
+    close = datetime.fromtimestamp(NOW + 20 * 60, UTC).strftime("%Y-%m-%dT%H:%M")
+    (tmp_path / "market_closes.json").write_text(js.dumps({"SOLTMN": close}), encoding="utf-8")
+    ex.guard(NOW + 180)
+    assert p.status in ("selling", "closed") and p.sell_reason == "market closes"
