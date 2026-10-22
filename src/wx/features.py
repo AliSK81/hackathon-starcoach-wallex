@@ -7,6 +7,7 @@ cite it and code can check it. FEATURES says what each one means.
 
 import bisect
 import time
+from statistics import median
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,7 +19,8 @@ HOUR = 3600
 MINUTE = 60
 
 # EMA 200 needs a long warm-up. With 1000 hours, how it starts no longer matters.
-MIN_HOURS = 250
+# The typical 24-hour move needs 30 days plus one day: 744 hours.
+MIN_HOURS = 750
 HOURS_USED = 1000
 
 # Name -> what it means. The AI will see these words. Order is the print order.
@@ -31,6 +33,7 @@ FEATURES = {
     "ret_4h_pct": "price change over the last 4 hours, %",
     "ret_24h_pct": "price change over the last 24 hours, %",
     "ret_72h_pct": "price change over the last 72 hours, %",
+    "typical_24h_move_pct": "usual size of a 24-hour price change, up or down, over the last 30 days, %",
     "ema20_vs_ema50_pct": "1h EMA 20 above (+) or below (-) EMA 50, %",
     "price_vs_ema200_pct": "last 1h close above (+) or below (-) EMA 200, %",
     "ema20_slope_5h_pct": "change of the 1h EMA 20 over the last 5 hours, %",
@@ -119,6 +122,8 @@ def build_features(hours: list[list[float]], minutes: list[list[float]], bid: De
         "ret_4h_pct": pct(price, close_at(now - 4 * HOUR)),
         "ret_24h_pct": pct(price, close_at(now - 24 * HOUR)),
         "ret_72h_pct": pct(price, close_at(now - 72 * HOUR)),
+        "typical_24h_move_pct": rnd(median(abs(closes[i] / closes[i - 24] - 1) * 100
+                                           for i in range(len(closes) - 720, len(closes))), 2),
         "ema20_vs_ema50_pct": pct(ema20[-1], ema50[-1]),
         "price_vs_ema200_pct": pct(last, ema200[-1]),
         "ema20_slope_5h_pct": slope,

@@ -66,6 +66,12 @@ uv run wx run
 
 This makes a decision like `wx decide` every 15 minutes, on the beat (at :00, :15, :30 and :45). Every cycle is logged in `data/decisions/`, even one that fails. Errors never stop it. Ctrl+C stops it. It places no orders. `--interval` and `--cycles` change the beat and the number of cycles.
 
+```bash
+uv run wx replay
+```
+
+This asks the AI about 40 past moments, rebuilt from the saved candles. Then it shows how often the AI bought, and how the price moved in the next 24 hours after each BUY and HOLD, after costs. `--moments`, `--days` and `--seed` change which moments. It needs the AI settings.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.

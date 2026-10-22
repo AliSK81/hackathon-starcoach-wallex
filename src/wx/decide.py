@@ -36,9 +36,13 @@ How the bot works:
   Base each decision on the features you are given, and name the ones you used.
 - You do not choose the order size, the price or the stop-loss. Code does that, and code
   can still refuse or shrink your decision.
-- Every buy then sell pays round_trip_cost_pct (fees plus spread). A BUY only makes sense
-  if you expect the price to rise clearly more than that cost within the next few hours.
-- HOLD is the right answer when there is no clear edge. Do not trade just to trade.
+- We hold a position for about a day (roughly 12 to 48 hours), not for minutes or one hour.
+  One hour's move is usually smaller than our costs, so judge each market over the next day.
+- Every buy then sell pays round_trip_cost_pct (fees plus spread). Compare it with
+  typical_24h_move_pct, the usual size of a one-day move. BUY when the features point to the
+  price rising over the next day by clearly more than round_trip_cost_pct.
+- HOLD when there is no clear edge. Do not trade just to trade, but do not wait for a
+  perfect setup either: a sound setup whose likely gain beats the cost is worth a BUY.
 
 Actions:
 - BUY: open or add to a position in this market.

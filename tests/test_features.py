@@ -42,7 +42,7 @@ def test_zscore_and_percent_rank():
     assert ind.percent_rank([1, 2], 5) is None
 
 
-def hours_uptrend(n=300):
+def hours_uptrend(n=800):
     """Closed hourly candles rising 0.2% an hour, with a jump at the end."""
     rows, price = [], 100.0
     for i in range(n):
@@ -66,6 +66,7 @@ def test_features_have_every_name_and_see_the_trend():
     assert f["breakout_up"] is True
     assert f["rsi14"] > 70
     assert f["ema20_vs_ema50_pct"] > 0 and f["price_vs_ema200_pct"] > 0
+    assert f["typical_24h_move_pct"] == pytest.approx((1.002**24 - 1) * 100, abs=0.01)
     assert f["spread_pct"] == pytest.approx(0.2, abs=0.001)
     assert f["round_trip_cost_pct"] is None
     assert f["ret_15m_pct"] == 0.0
@@ -105,12 +106,12 @@ def test_wx_features_prints_a_row_per_feature(monkeypatch, capsys):
 
     def fake_market_features(symbol, data_dir, taker_fee=None):
         if symbol == "ETHTMN":
-            raise ValueError("need 250 closed 1-hour candles, have 3")
+            raise ValueError("need 750 closed 1-hour candles, have 3")
         return table
 
     monkeypatch.setattr(cli, "market_features", fake_market_features)
     assert cli.main(["features"]) == 1
     out = capsys.readouterr().out
-    assert "ETHTMN: failed. need 250" in out
+    assert "ETHTMN: failed. need 750" in out
     for name in FEATURES:
         assert name in out

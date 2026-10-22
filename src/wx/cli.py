@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,8 +16,9 @@ from wx.features import FEATURES, market_features
 from wx.llm import LLMError, chat, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
+from wx.replay import History, run_replay, sample_times, summary
 from wx.rules import MarketRules
-from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
+from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
 
@@ -280,6 +282,39 @@ def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int 
     return 0
 
 
+# Taker fee on TMN markets (DECISIONS F3), used by `wx replay` if fees can't be read.
+TMN_TAKER_FEE = 0.003
+
+
+def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int) -> int:
+    if missing_ai_settings(settings):
+        return 1
+    markets = pick_markets(symbols)
+    if markets is None:
+        return 1
+    now = int(time.time())
+    histories = {s: History.load(DATA_DIR, s, now) for s in markets}
+    newest = int(min(h.minutes[-1][0] for h in histories.values() if h.minutes))
+    times = sample_times(newest - days * 86400, newest - 86400, moments, seed)
+    spreads = {}
+    for s in markets:
+        try:
+            bid, ask = fetch_best_prices(s)
+            spreads[s] = float((ask - bid) / ((ask + bid) / 2) * 100)
+        except WallexError:
+            spreads[s] = 0.3
+            print(f"  {s}: could not read the book, so the spread is taken as 0.3%")
+    fees = taker_fees(settings) or {s: TMN_TAKER_FEE for s in markets}
+    base_url, model = settings.get("LLM_BASE_URL"), settings.get("LLM_MODEL")
+    log = DATA_DIR / "replay" / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.jsonl"
+    print(f"Replaying {len(times)} moments from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
+    results = run_replay(times, histories, spreads, fees,
+                         lambda messages: chat(base_url, model, settings.get("LLM_API_KEY"), messages, json_mode=True),
+                         log, workers)
+    print(summary(results))
+    return 0
+
+
 AI_CHECK = [
     {"role": "system", "content": "You are a trading assistant. Reply only with one JSON object."},
     {
@@ -339,6 +374,12 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("ai", help="check the AI settings with one small call")
     decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no orders)")
     decider.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    replayer = commands.add_parser("replay", help="ask the AI about past moments and see what happened next")
+    replayer.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+    replayer.add_argument("--moments", type=int, default=40, help="how many past moments (default 40)")
+    replayer.add_argument("--days", type=int, default=60, help="pick moments from the last N days (default 60)")
+    replayer.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
+    replayer.add_argument("--workers", type=int, default=4, help="AI calls at the same time (default 4)")
     runner = commands.add_parser("run", help="decide on a fixed beat and log every cycle (no orders)")
     runner.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     runner.add_argument("--interval", type=int, default=DECIDE_EVERY,
@@ -355,6 +396,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_account(Settings.load())
     if args.command == "ai":
         return run_ai(Settings.load())
+    if args.command == "replay":
+        return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers)
     if args.command == "run":
         return run_loop(args.symbols, Settings.load(), args.interval, args.cycles)
     if args.command == "decide":

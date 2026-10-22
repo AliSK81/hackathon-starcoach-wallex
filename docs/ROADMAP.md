@@ -31,6 +31,7 @@ Build a bot that trades on Wallex by itself. It must:
 8. **Log everything.** Log every cycle. This includes "do nothing" and "the AI said buy but the risk check said no".
 9. **Tag the code that trades.** Every version that places real orders gets a git tag. The log records which version ran.
 10. **Track progress in PROGRESS.md.** This file only shows phase status.
+11. **Check results, not only code.** Before a phase is done, look at its real output and ask: would this earn money or points? Measure it against data. If the output looks odd or always the same, find out why. Fix problems before the next phase starts.
 
 ## Status
 
@@ -38,7 +39,7 @@ Build a bot that trades on Wallex by itself. It must:
 |---|---|---|---|---|
 | 0 | Project setup | before live | done | [phase-0-setup.md](phases/phase-0-setup.md) |
 | 1 | Read from Wallex | before live | done | [phase-1-read.md](phases/phase-1-read.md) |
-| 2 | AI decides, no money | before live | done | [phase-2-decide.md](phases/phase-2-decide.md) |
+| 2 | AI decides, no money | before live | in progress | [phase-2-decide.md](phases/phase-2-decide.md) |
 | 3 | Risk check and fake orders | before live | not started | — |
 | 4 | First real orders | before live | not started | — |
 | 5 | Live trading | live | not started | — |
@@ -98,6 +99,7 @@ Status values: `not started`, `planned` (plan file exists), `in progress` (first
 - Every cycle, the bot computes indicators from live data.
 - The AI makes a decision and explains it using those indicators.
 - Every decision is logged, including "do nothing".
+- Tested on past moments: the AI buys some of the time, and we know how its buys did compared with doing nothing.
 - No orders of any kind.
 
 **Not yet:** order size, risk limits, orders.

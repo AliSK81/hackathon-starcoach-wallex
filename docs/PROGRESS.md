@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 3, not started (Phase 2 done)
+- **Current phase:** 2, reopened (see change 12)
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -344,3 +344,32 @@ Not done yet:
 
 Next change idea:
 - Phase 3 plan. Then the risk check: approve, shrink or reject each AI decision, testable without internet.
+
+### Change 12 — Phase 2 reopened: one-day time frame, `wx replay`, and the first real test of the AI — 2026-10-22
+Phase: 2, results review
+How to see it: `uv run wx replay` (about 10 minutes for 40 moments)
+Why: Change 11 closed Phase 2 because the checklist passed. Nobody checked whether the decisions were any use. The AI had said HOLD every time. The prompt asked for gains within a few hours, but over 4 hours prices usually move less than the round-trip cost. The bot would never have traded. ROADMAP rule 11 now makes this check part of every phase.
+Proof it works:
+- Typical moves over 120 days: 4 hours 0.24% to 0.82%, 24 hours 0.81% to 2.16%. Round-trip cost is 0.61% to 1.17% (F14). So the prompt now uses about a day (D20).
+- `wx replay --moments 40`: 40 moments from the last 60 days, 4 AI calls at a time, no AI failure. Results in F18: the AI buys now (7%), but its buys did no better than its holds.
+- Setup study without AI (F17): only "buy after a sharp drop" was positive in both halves of the period, and only by +0.42% a trade. The 2026-10-07 drop kept falling 3% to 9% the next day, so dip buying needs a stop-loss.
+- `uv run pytest` passed 72 tests. One test proves past features never use later candles.
+
+Research: research file 06, sections 2, 3 and 6, for the textbook setups and thresholds. None were tuned.
+Questions: none
+Decisions: D20, D21. Facts F17, F18.
+
+Shipped:
+- ROADMAP rule 11, and Phase 2 back to "in progress".
+- `typical_24h_move_pct` feature. Minimum history is now 750 hours.
+- The prompt: judge over about a day, and compare the cost with the typical day move.
+- `src/wx/replay.py` and `wx replay [SYMBOL ...] [--moments 40] [--days 60] [--seed 7] [--workers 4]`. Each run is logged in `data/replay/`.
+- `tests/test_replay.py`: 4 tests.
+
+Not done yet:
+- We have no proven edge. Not from the AI, and only a weak one from one setup.
+- Costs eat most of any edge. Limit orders (maker 0.25%, no spread crossing) could cut the round trip to about 0.5%. Whether they fill is a Phase 4 question.
+- The replay holds for 24 hours with no stop-loss. Phase 3 adds stops.
+
+Next change idea:
+- Setups: code flags the setups from F17 with their past results. The AI decides which to take. The replay compares the AI with taking every setup and with doing nothing, with a stop-loss on each entry.

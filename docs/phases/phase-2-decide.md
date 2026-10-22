@@ -18,3 +18,6 @@ Goal: every cycle, the bot computes indicators from live data. The AI makes a de
 - [x] `wx features`: indicators for each market, from saved candles and the live order book.
 - [x] `wx decide`: one AI decision from the indicators, checked and logged.
 - [x] `wx run`: a loop that updates candles, computes indicators, asks the AI, and logs every cycle. It survives errors.
+- [x] Results review. The AI said HOLD in every decision. The prompt asked for gains within a few hours, but over 4 hours prices usually move less than the round-trip cost. Fixed: the AI now judges over about a day (D20).
+- [x] `wx replay`: ask the AI about past moments. Report how often it buys, and what happened in the next 24 hours after each BUY and each HOLD.
+- [ ] Setups. The AI now buys 7% of the time, but its buys did no better than its holds (F18). Code flags the setups from F17, with their past results. The AI decides which to take. Every entry has a stop-loss in the test. `wx replay` compares the AI with taking every setup and with doing nothing.
