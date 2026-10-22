@@ -177,3 +177,16 @@ def test_a_client_error_is_not_retried(monkeypatch):
     with pytest.raises(LLMError):
         chat(URL, "m1", KEY, [])
     assert len(calls) == 1
+
+
+def test_broken_json_after_tools_is_asked_for_once_more(monkeypatch):
+    bodies = scripted(monkeypatch, [
+        {"content": None, "tool_calls": [tool_call("ping", "{}")]},
+        {"content": '{"decisions": [ {"symbol" "BTCTMN"} ]}'},
+        {"content": '{"decisions": []}'},
+    ])
+    reply = chat_with_tools(URL, "m1", KEY, [], {"ping": Tool("ping", {"type": "object"}, lambda: "pong")})
+    assert parse_json(reply.text) == {"decisions": []}
+    assert bodies[2]["response_format"] == {"type": "json_object"} and "tools" not in bodies[2]
+    assert "not valid JSON" in bodies[2]["messages"][-1]["content"]
+    assert reply.usage == {"total_tokens": 30}

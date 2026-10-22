@@ -137,6 +137,7 @@ def chat_with_tools(base_url: str, model: str, api_key: str, messages: list[dict
 
     Each call and its result are kept in Reply.steps, so the log shows how the
     AI got to its answer. A tool that fails returns {"error": ...} to the AI.
+    If the final answer is not valid JSON, the AI is asked once more, in JSON mode.
     Time and tokens are added up over all rounds.
     """
     specs = [{"type": "function", "function": {"name": name, "description": t.description, "parameters": t.parameters}}
@@ -162,6 +163,15 @@ def chat_with_tools(base_url: str, model: str, api_key: str, messages: list[dict
                 args, result = call.get("function", {}).get("arguments"), {"error": f"{type(error).__name__}: {error}"}
             steps.append({"tool": name, "args": args, "result": result})
             messages.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": json.dumps(result)})
+    try:
+        parse_json(reply.text)
+    except LLMError as error:  # tools and JSON mode don't mix, so the final answer can be broken JSON: ask once more
+        retry = f"That was not valid JSON ({error}). Reply with only the JSON object."
+        messages += [{"role": "assistant", "content": reply.text}, {"role": "user", "content": retry}]
+        reply = chat(base_url, model, api_key, messages, json_mode=True, timeout=timeout)
+        seconds += reply.seconds
+        tokens += reply.usage.get("total_tokens", 0)
+        reasoning.append(reply.reasoning)
     reply.seconds, reply.usage, reply.steps = round(seconds, 2), {"total_tokens": tokens}, steps
     reply.reasoning = "\n\n".join(r for r in reasoning if r)
     return reply
