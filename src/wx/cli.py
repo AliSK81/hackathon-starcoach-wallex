@@ -257,6 +257,27 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
     return run(brain, DATA_DIR, name, interval, cycles, saver)
 
 
+def run_agent_replay(symbols: list[str], settings: Settings, moments: int, days: int, seed: int, workers: int,
+                     saved: Path | None) -> int:
+    """`wx agent-replay`: the agent graph on past moments, against the rules alone."""
+    from wx import agent_replay
+    if saved:
+        records = [json.loads(line) for line in saved.read_text(encoding="utf-8").splitlines() if line.strip()]
+        print(agent_replay.summary(records))
+        return 0
+    if missing_ai_settings(settings):
+        return 1
+    from wx.runner import chat_model
+    symbols = [s.upper() for s in symbols] or list(DEFAULT_SYMBOLS)
+    print("Rebuilding the features at every past hour (cached for 6 hours) ...")
+    rows, histories = agent_replay.load_rows(symbols, DATA_DIR, int(time.time()))
+    out = DATA_DIR / "replay" / f"agent_graph_{datetime.now(UTC):%Y%m%d_%H%M}.jsonl"
+    print(f"Replaying {moments} moments with the full graph. Log: {out}")
+    records = agent_replay.run(rows, histories, chat_model(settings, DATA_DIR), moments, days, seed, out, workers)
+    print(agent_replay.summary(records))
+    return 0
+
+
 def run_verify_log(day: str | None) -> int:
     """Check the hash chain of the agent's decision log for one UTC day (default: today)."""
     from wx.decide import verify_chain
@@ -503,6 +524,12 @@ def main(argv: list[str] | None = None) -> int:
     agent.add_argument("--no-officer", action="store_true", help="skip the risk officer AI (faster cycles)")
     beat(agent, DECIDE_EVERY)
     command("live", "show the live book (no Wallex call)", symbols=False)
+    areplay = command("agent-replay", "the agent graph on past moments, against the rules alone")
+    areplay.add_argument("--moments", type=int, default=20, help="how many past moments (default 20)")
+    areplay.add_argument("--days", type=int, default=60, help="pick moments from the last N days (default 60)")
+    areplay.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
+    areplay.add_argument("--workers", type=int, default=3, help="moments at the same time (default 3)")
+    areplay.add_argument("--from", dest="saved", type=Path, default=None, help="summarize a saved replay log")
     command("verify-log", "check the hash chain of the agent's decision log", symbols=False).add_argument(
         "day", nargs="?", default=None, help="UTC day, e.g. 2026-10-22 (default today)")
     command("kill", "KILL SWITCH: cancel every open order and sell every live position")
@@ -541,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
                                    not a.no_officer),
         "live": lambda: run_live_report(),
         "verify-log": lambda: run_verify_log(a.day),
+        "agent-replay": lambda: run_agent_replay(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,
+                                                 a.saved),
         "kill": lambda: run_kill(a.symbols, Settings.load()),
         "order-test": lambda: run_order_test(a.symbol, Settings.load()),
         "replay": lambda: run_replay_cmd(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,

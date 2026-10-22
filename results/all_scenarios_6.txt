@@ -1,0 +1,33 @@
+Market set 6: BTCTMN ETHTMN SOLTMN XRPTMN PEPETMN USDTTMN. 89 days of hours, 12852 rows.
+
+=== agent (setups + agent limits)
+whole history, limit: return   +3.08%  max drawdown  4.56%  trades 88 (1.0/day)  win 45%  avg trade +0.29%
+whole history, taker: return   +0.76%  max drawdown  6.15%  trades 98 (1.1/day)  win 51%  avg trade +0.13%
+1st half, limit    : return   +0.79%  max drawdown  1.97%  trades 28
+2nd half, limit    : return   +2.27%  max drawdown  4.56%  trades 60
+72 h windows   : avg  -0.03%  up  48%  flat   6%  worst  -1.87%  best  +2.56%  (n=87)
+24 h windows   : avg  -0.04%  up  25%  flat  42%  worst  -1.43%  best  +2.31%  (n=353)
+12 h windows   : avg  -0.04%  up  14%  flat  61%  worst  -1.43%  best  +2.15%  (n=355)
+
+=== agent setups, old limits
+whole history, limit: return  +15.47%  max drawdown  7.40%  trades 146 (1.6/day)  win 42%  avg trade +0.77%
+whole history, taker: return  +19.98%  max drawdown  8.46%  trades 167 (1.9/day)  win 43%  avg trade +0.92%
+1st half, limit    : return  +14.09%  max drawdown  5.64%  trades 69
+2nd half, limit    : return   +1.22%  max drawdown  7.40%  trades 77
+72 h windows   : avg  +0.17%  up  45%  flat   0%  worst  -3.33%  best +15.25%  (n=87)
+24 h windows   : avg  -0.03%  up  35%  flat  15%  worst  -2.91%  best  +6.56%  (n=353)
+12 h windows   : avg  -0.07%  up  23%  flat  35%  worst  -2.69%  best  +2.55%  (n=355)
+
+=== old trend rule
+whole history, limit: return  +35.73%  max drawdown  8.23%  trades 91 (1.0/day)  win 40%  avg trade +3.33%
+whole history, taker: return  +33.05%  max drawdown  9.07%  trades 92 (1.0/day)  win 36%  avg trade +3.20%
+1st half, limit    : return  +21.59%  max drawdown  7.83%  trades 42
+2nd half, limit    : return  +11.15%  max drawdown  8.23%  trades 51
+72 h windows   : avg  +0.54%  up  45%  flat   0%  worst  -4.47%  best +14.33%  (n=87)
+24 h windows   : avg  -0.01%  up  39%  flat   6%  worst  -3.92%  best  +7.92%  (n=353)
+12 h windows   : avg  -0.14%  up  32%  flat  12%  worst  -3.31%  best  +6.09%  (n=355)
+
+=== baseline: hold every market in equal parts
+72 h windows   : avg  +1.58%  up  52%  flat   0%  worst  -7.84%  best +29.70%  (n=87)
+24 h windows   : avg  +0.14%  up  47%  flat   0%  worst  -6.79%  best +11.63%  (n=353)
+12 h windows   : avg  -0.25%  up  39%  flat   0%  worst  -5.32%  best  +7.35%  (n=355)

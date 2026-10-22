@@ -126,3 +126,13 @@ def test_safe_mode_skips_the_debate():
     b.debate = True
     state = build_graph(b).invoke({"fail_streak": 5})
     assert state["bull"] == {} and b.executor.bought
+
+
+def test_agent_replay_summary_compares_ai_buys_with_all_candidates():
+    from wx.agent_replay import summary
+    rec = {"ai_error": None, "tool_calls": 4, "results": [
+        {"symbol": "A", "ai": "BUY", "tmn": 100, "net_pct": 2.0, "conviction": 0.7, "officer": ""},
+        {"symbol": "B", "ai": "HOLD", "tmn": 0, "net_pct": -1.0, "conviction": 0.2, "officer": ""},
+        {"symbol": "C", "ai": "BUY", "tmn": 0, "net_pct": None, "conviction": 0.5, "officer": ""}]}
+    text = summary([rec])
+    assert "every candidate (rules only): +0.50% (2)" in text and "bought by the agent:          +2.00% (1)" in text

@@ -169,6 +169,31 @@ What this means:
 - Most of the Toman's fall against the dollar happened in Tehran daytime (F44). In Tehran evening and night, the
   drift was close to zero.
 
+**Every test, on the current agent rules** (F49, `scripts/test_all_scenarios.py`). Limit orders, after costs.
+Our 6 TMN markets / 12 other TMN markets / 6 USDT markets (no Toman drift):
+
+| Test | Agent (current) | Old trend rule | Hold every market |
+|---|---|---|---|
+| Whole 89 days | +3.1% / +18.5% / -0.3% | +35.7% / +34.5% / -8.4% | — |
+| Max drawdown | 4.6% / 12.2% / 6.9% | 8.2% / 13.1% / 16.9% | — |
+| 1st half, 2nd half | both positive on both TMN sets | both positive on TMN, lost without the drift | — |
+| 3-day windows, average (worst) | -0.03% / +0.26% / -0.02% (-1.9% / -5.1% / -1.5%) | +0.54% / +0.20% / -0.44% | +1.58% / +2.33% / +0.39% (-7.8% / -10.2% / -9.4%) |
+| 1-day windows | -0.04% / -0.04% / -0.02% | -0.01% / -0.21% / -0.30% | +0.14% / +0.30% / -0.30% |
+| 12-hour windows | -0.04% / -0.08% / -0.02% | -0.14% / -0.25% / -0.27% | -0.25% / -0.20% / -0.49% |
+
+- The agent has the smallest drawdown and the smallest worst window in every test, and it does not lose when the
+  Toman drift is taken out. Over 12 hours and 1 day it is the best of the systems tested.
+- It earns little. Over days, the old trend rule and plain holding made more, because the Toman fell. They also
+  lost 2 to 4 times as much in their worst windows, and the trend rule lost 8% without the drift.
+
+**By setup** (F50): dips alone made +3.1% on our markets and lost 4.1% on the other 12. trend_strong alone lost
+1.2% on ours and made 27.6% on the other 12. Neither is reliable alone, so the agent keeps both.
+
+**The whole agent on past moments** (F51, `wx agent-replay`): 20 moments, all with trend_strong candidates, in a
+period where trend_strong lost. Every candidate: -2.37% per trade. The agent's buys, weighted by the size it allowed:
+-1.79%. It gave low conviction every time and the officer cut 18 of 22 buys, so the AI shrank the losers. It could
+not stop them: none of the checked vetoes applied.
+
 **Over many days** (the older results, F25, F28, F33):
 
 | Test | Result |

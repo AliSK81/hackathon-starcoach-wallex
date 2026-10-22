@@ -672,3 +672,26 @@ Not done yet:
 
 Next change idea:
 - Go live with the agent. Keep the shadow agent next to it.
+
+### Change 24 — every test on the current agent, and the whole agent replayed on past moments — 2026-10-22
+Phase: 6 (tests on the past)
+How to see it: `uv run python scripts/test_all_scenarios.py 6|12|usdt`, `uv run python scripts/test_setup_split.py`, `uv run wx agent-replay --from results/replay_agent_graph.jsonl`
+Proof it works:
+- Every rule-level test from this project ran on the current agent rules, on 3 market sets (F49). The agent has the smallest drawdown and worst window in every test, is positive over the whole history on both TMN sets, and does not lose without the Toman drift. It earns little: over days, the old trend rule and plain holding made more, through the Toman drift, with 2 to 4 times the worst case.
+- Split by setup, dips and trend_strong each win on one market set and lose on the other (F50). Both stay.
+- The whole agent graph ran on 20 past moments with no failed cycle (F51). The candidates lost (-2.37% per trade). The AI shrank them to -1.79% weighted by size, but could not stop them.
+- `uv run pytest` passed 154 tests.
+
+Research: none new.
+Questions: the user asked to test every scenario, not only 12 hours.
+Decisions: none new. Facts F49 to F51.
+
+Shipped:
+- `scripts/test_all_scenarios.py`, `scripts/test_setup_split.py`.
+- `agent_replay.py` and `wx agent-replay`: the whole graph on past moments, against the rules alone.
+
+Not done yet:
+- A Wallex key that can trade. Then `wx order-test`, then `wx agent --live`.
+
+Next change idea:
+- Go live with the agent, or decide first how much Toman drift to bet on.
