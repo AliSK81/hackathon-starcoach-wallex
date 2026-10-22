@@ -296,6 +296,12 @@ def test_no_buy_in_a_market_that_closes_soon_and_the_agent_is_told():
     facts = json.loads(SEEN[0][1].content.split("\n\n")[0])
     assert "SOLTMN" in facts["markets_closing_utc"]
     assert "aggressive risk" in SEEN[0][0].content
+    b.market_closes = lambda: {"SOLTMN": NOW - 60}  # closed already: still listed, still refused
+    SEEN.clear()
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(plan([buy()])))])
+    state = build_graph(b).invoke({})
+    assert json.loads(SEEN[0][1].content.split("\n\n")[0])["markets_closing_utc"]
+    assert state["decisions"][0]["verdict"]["rule"] == "market closes"
 
 
 def test_market_closes_file(tmp_path):

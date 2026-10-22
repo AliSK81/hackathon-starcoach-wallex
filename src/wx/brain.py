@@ -258,6 +258,9 @@ risk_pct 1.5 to 3, up to the envelope's limit in one coin, and take more of the 
 for perfect ones. A buy still needs an edge after costs: aggressive means bigger and more often, not careless.
 The hard limits and the halts after losses stay.
 
+Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
+code refuses the buy and sells what we hold there before the close.
+
 USDTTMN is a market like the others: holding USDT instead of Toman is a choice you may make, or not, from the
 evidence (usdt_as_cash) and the Toman's trend now. It is sold into Toman at the end like every coin.
 
@@ -373,7 +376,7 @@ def build_graph(b: Brain, checkpointer=None):
             "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
                                                else OVERVIEW),
             "markets_closing_utc": {s: time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
-                                    for s, t in b.market_closes().items() if t > state["now"]},
+                                    for s, t in b.market_closes().items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
