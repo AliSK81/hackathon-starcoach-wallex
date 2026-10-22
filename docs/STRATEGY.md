@@ -5,12 +5,12 @@ Details and dates are in [DECISIONS.md](DECISIONS.md) (D = decision, F = checked
 
 ## In one paragraph
 
-Every 15 minutes the bot reads live Wallex data for six liquid Toman markets. Code computes 27 indicators per market. Code checks one buy rule: the 1-hour EMA 20 is above the EMA 50 (an uptrend). For every market where the rule holds, an AI reviews the buy and writes why. The AI can stop a buy, but only with a reason that code can check in the data. A risk check in normal code then sizes the buy, or rejects it. Buys are limit orders at the bid. A position is sold when the trend turns (EMA 20 below EMA 50) or at a stop-loss. Every step is logged.
+Every 15 minutes the bot reads live Wallex data for six liquid Toman markets. Code computes 28 named features per market. Code checks one buy rule: the 1-hour EMA 20 is above the EMA 50 (an uptrend). For every market where the rule holds, an AI reviews the buy and writes why. The AI can stop a buy, but only with a reason that code can check in the data. A risk check in normal code then sizes the buy, or rejects it. Buys are limit orders at the bid. A position is sold when the trend turns (EMA 20 below EMA 50) or at a stop-loss. Every step is logged.
 
 ## Architecture
 
 ```
-Wallex REST API ──> candles + order book ──> features (code, 27 per market)
+Wallex REST API ──> candles + order book ──> features (code, 28 per market)
                                                 │
                                    setups (code): is "trend" active?
                                                 │
@@ -29,7 +29,7 @@ Wallex REST API ──> candles + order book ──> features (code, 27 per mark
 |---|---|---|
 | Wallex client | `wallex.py` | Public data and our account, standard library only. The key goes only in a header. |
 | Candles | `candles.py` | Saves 1-minute and 1-hour candles to `data/candles/`. Keeps 120 days. |
-| Features | `features.py`, `indicators.py` | 27 named indicators. Matches the `ta` library (change 9). |
+| Features | `features.py`, `indicators.py` | 28 named features. Matches the `ta` library (change 9). |
 | Setups | `setups.py` | Buy rules with their own exit rules. Only `trend` is traded (D29). |
 | AI | `llm.py`, `decide.py`, `agent.py` | Any OpenAI-compatible model. JSON answers, checked by code. Optional tools. |
 | Checked veto | `veto.py` | The AI's veto must be one of three, and code checks it (D30). |
