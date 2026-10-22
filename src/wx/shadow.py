@@ -32,6 +32,13 @@ class Order:
     exit_t: int | None = None
     net_pct: float | None = None
 
+    def value(self, prices: dict[str, float]) -> float:
+        """What the order is worth now. Open: at the given price, or at the entry price if there is none.
+        Waiting: its full size, which is set aside."""
+        if self.status != "open":
+            return self.tmn
+        return self.tmn * prices.get(self.symbol, self.entry) / self.entry
+
 
 @dataclass
 class Book:
@@ -91,8 +98,7 @@ class Book:
 
     def account(self, prices: dict[str, float], now: int) -> Account:
         """Equity at these prices. Waiting orders count at their full size."""
-        value = sum(o.tmn * (prices[o.symbol] / o.entry if o.status == "open" else 1) for o in self.active())
-        equity = self.cash + value
+        equity = self.cash + sum(o.value(prices) for o in self.active())
         self.peak, self.halted_since = update_peak(self.peak, equity, self.halted_since, now)
         if self.day != now // 86400:
             self.day, self.day_start = now // 86400, equity
@@ -137,16 +143,12 @@ def report(book: Book, prices: dict[str, float] | None = None) -> str:
     prices = prices or {}
     closed = [o for o in book.orders if o.status == "closed"]
     realized = sum(o.tmn * o.net_pct / 100 for o in closed)
-
-    def worth(o: Order) -> float:
-        return o.tmn * (prices[o.symbol] / o.entry if o.status == "open" and o.symbol in prices else 1)
-
-    equity = book.cash + sum(worth(o) for o in book.active())
+    equity = book.cash + sum(o.value(prices) for o in book.active())
     lines = [f"Equity {equity:,.0f} TMN ({(equity / START_TMN - 1) * 100:+.2f}%). Cash {book.cash:,.0f}. "
              f"Realized {realized:+,.0f} TMN. Peak {book.peak:,.0f}."]
     for o in book.active():
         if o.entry:
-            now = f", now {(worth(o) / o.tmn - 1) * 100:+.2f}%" if o.symbol in prices else ""
+            now = f", now {(o.value(prices) / o.tmn - 1) * 100:+.2f}%" if o.symbol in prices else ""
             entry = f"entry {price(o.entry)}{now}"
         else:
             entry = f"limit buy, mid price then {price(o.price)}"

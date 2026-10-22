@@ -148,3 +148,11 @@ def test_agent_role_gets_tools_in_the_live_cycle(monkeypatch, tmp_path):
     run_cycle(ctx, 1)
     assert seen["tools"] == ["get_hourly_closes", "get_market", "get_setup_record"]
     assert seen["record"]["trend"] == {"trades": 0, "average_net_pct": None, "made_money_pct": None}
+
+
+def test_a_held_market_without_a_price_counts_at_its_entry(tmp_path):
+    log = tmp_path / "orders.jsonl"
+    book = Book()
+    book.place("BTCTMN", "trend", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, log)
+    book.update({"BTCTMN": minutes(20, low_at=10)}, T0 + 1200, log)
+    assert book.account({}, T0 + 1300).equity == pytest.approx(5_000_000)  # Wallex failed for BTCTMN: no KeyError
