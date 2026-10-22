@@ -51,6 +51,15 @@ class History:
         i = bisect.bisect_right(self.minute_starts, t - MINUTE)
         return self.minutes[i - 1][4] if i else None
 
+    def first_below(self, start: int, end: int, price: float) -> int | None:
+        """End of the first 1-minute candle in [start, end) that traded below price, or None."""
+        first = bisect.bisect_left(self.minute_starts, start)
+        last = bisect.bisect_left(self.minute_starts, end)
+        for candle in self.minutes[first:last]:
+            if candle[3] < price:
+                return int(candle[0]) + MINUTE
+        return None
+
     def exit_after(self, t: int, entry: float, stop_pct: float | None) -> tuple[float, int]:
         """Price change from entry at t to the exit, in %, and when the exit happened.
 

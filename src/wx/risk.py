@@ -15,6 +15,7 @@ class Limits:
     stop_atr: float = 4.0  # stop-loss, in 1h ATRs below the entry (D23)
     daily_loss: float = 0.02  # no new buys after losing this share of equity today
     max_drawdown: float = 0.06  # no new buys while equity is this far below its peak
+    halt_hours: float = 24  # after this long in a drawdown halt, the peak resets and buying may start again
     max_data_age_min: float = 5.0  # no buys on stale data
     min_order_tmn: float = 50_000  # Wallex minimum order (F8)
 
@@ -57,3 +58,18 @@ def check_buy(features: dict, account: Account, held_tmn: float = 0.0, limits: L
     if name == "risk per trade":
         return Verdict(round(tmn), stop_pct, "approved", "approved")
     return Verdict(round(tmn), stop_pct, name, f"shrunk to the {name} limit")
+
+
+def update_peak(peak: float, equity: float, halted_since: int | None, t: int,
+                limits: Limits = Limits()) -> tuple[float, int | None]:
+    """The peak to measure drawdown from, and when the drawdown halt began (None if not halted).
+
+    A halt that has lasted halt_hours ends: the peak resets to today's equity.
+    Without this, one bad week would stop trading for good.
+    """
+    if equity >= peak * (1 - limits.max_drawdown):
+        return max(peak, equity), None
+    halted_since = halted_since if halted_since is not None else t
+    if t - halted_since >= limits.halt_hours * 3600:
+        return equity, None
+    return peak, halted_since
