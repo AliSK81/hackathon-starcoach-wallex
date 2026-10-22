@@ -181,3 +181,10 @@ def test_wx_decide_end_to_end_without_internet(monkeypatch, tmp_path, capsys):
     assert record["cash_tmn"] == 5_000_000 and record["driver"] == "ai" and record["version"]
     assert KEY not in seen["messages"] and "wallex-secret" not in seen["messages"]
     assert KEY not in json.dumps(record) and "wallex-secret" not in json.dumps(record)
+
+
+def test_tool_calls_are_kept_in_the_record():
+    steps = [{"tool": "get_market", "args": {"symbol": "BTCTMN"}, "result": {"rsi14": 72.2}}]
+    r = Reply(text=json.dumps(answer(item())), model="m1", seconds=1.0, steps=steps)
+    record = decide(TABLE, 5_000_000, {}, lambda messages: r, "pick")
+    assert record["ai"]["steps"] == steps

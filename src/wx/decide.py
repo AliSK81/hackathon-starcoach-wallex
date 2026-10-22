@@ -277,7 +277,7 @@ def decide(table: dict[str, dict], cash_tmn: int | None, held: dict, ask: Callab
         return {**record, "driver": "fallback", "error": str(error),
                 "decisions": [hold(s, "the AI call failed") for s in table]}
     record["ai"] = {"model": reply.model, "seconds": reply.seconds, "usage": reply.usage,
-                    "answer": reply.text, "reasoning": reply.reasoning}
+                    "answer": reply.text, "reasoning": reply.reasoning, "steps": reply.steps}
     try:
         answer = parse_json(reply.text)
     except LLMError as error:
