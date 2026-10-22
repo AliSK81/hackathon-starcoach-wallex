@@ -206,10 +206,11 @@ def check_decision(item: dict, features: dict, held: dict, allowed: tuple[str, .
         problems.append(f"confidence {item.get('confidence')!r} is not a number from 0 to 1")
         confidence, action = 0.0, "HOLD"
     names = [str(n) for n in item.get("cited")] if isinstance(item.get("cited"), list) else []
-    unknown = [n for n in names if n not in FEATURES]
+    known = {**features, **held.get(symbol, {})}  # a held market's position fields (pnl_pct, ...) count too
+    unknown = [n for n in names if n not in FEATURES and n not in held.get(symbol, {})]
     if unknown:
         problems.append(f"cited unknown features: {', '.join(unknown)}")
-    cited = {n: features[n] for n in names if n in FEATURES}
+    cited = {n: known[n] for n in names if n not in unknown}
     if action == "SELL" and symbol not in held:
         problems.append("SELL but we hold nothing to sell here")
         action = "HOLD"

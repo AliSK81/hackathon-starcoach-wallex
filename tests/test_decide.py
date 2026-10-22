@@ -188,3 +188,11 @@ def test_tool_calls_are_kept_in_the_record():
     r = Reply(text=json.dumps(answer(item())), model="m1", seconds=1.0, steps=steps)
     record = decide(TABLE, 5_000_000, {}, lambda messages: r, "pick")
     assert record["ai"]["steps"] == steps
+
+
+def test_a_held_market_may_cite_its_position_fields():
+    held = {"BTCTMN": {"qty": "0.01", "value_tmn": 220_000_000, "pnl_pct": -0.8}}
+    d = by_symbol(check_answer(answer(item(action="HOLD", cited=("pnl_pct", "rsi14"))), TABLE, held)[1])["BTCTMN"]
+    assert d["cited"] == {"pnl_pct": -0.8, "rsi14": 72.2} and d["problems"] == []
+    d = by_symbol(check_answer(answer(item("ETHTMN", "HOLD", cited=("pnl_pct",))), TABLE, held)[1])["ETHTMN"]
+    assert d["problems"] == ["cited unknown features: pnl_pct"]
