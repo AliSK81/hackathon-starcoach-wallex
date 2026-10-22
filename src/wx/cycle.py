@@ -127,7 +127,8 @@ def run_cycle(ctx: Context, cycle: int | None = None) -> dict:
     """One cycle. Logs one line in data/decisions/ and returns it."""
     table, feature_errors = collect_features(ctx.markets, ctx.settings, ctx.data_dir)
     now = int(time.time())
-    record = {"cycle": cycle, "version": code_version(), "role": ctx.role, "markets": table,
+    # decided_at links this decision to the shadow orders it places (they carry the same t).
+    record = {"cycle": cycle, "decided_at": now, "version": code_version(), "role": ctx.role, "markets": table,
               "feature_errors": feature_errors, "cash_tmn": None, "held": {}, "account_error": None}
     if not table:
         record.update(driver="none", error="no market has features", ai=None, decisions=[])

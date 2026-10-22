@@ -110,3 +110,15 @@ def test_report_shows_active_and_closed_orders(tmp_path):
     text = report(book)
     assert "open     BTCTMN    trend        1,000,000 TMN  entry 99.9, stop -4.00%" in text
     assert "closed   ETHTMN" in text and "Closed trades: 1, 1 made money." in text
+
+
+def test_orders_carry_the_time_of_their_decision(monkeypatch, tmp_path):
+    settings = Settings({"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-x"})
+    monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": FEATURES}, {}))
+    answer = {"decisions": [{"symbol": "BTCTMN", "action": "BUY", "confidence": 0.6, "setup": "trend",
+                             "reason": "r", "cited": ["rsi14"]}]}
+    monkeypatch.setattr(cycle, "chat", lambda *a, **k: Reply(json.dumps(answer), "m1", 1.0))
+    ctx = Context({"BTCTMN": {}}, settings, tmp_path, role="veto", shadow=True)
+    record = run_cycle(ctx, 1)
+    logged = json.loads(next((tmp_path / "decisions").glob("*.jsonl")).read_text(encoding="utf-8"))
+    assert logged["decided_at"] == record["decided_at"] == Book.load(ctx.book_path).orders[0].t
