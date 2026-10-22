@@ -8,7 +8,7 @@ from wx.cycle import Context, act, run_cycle
 from wx.llm import Reply
 from wx.replay import History
 from wx.risk import Verdict
-from wx.shadow import Book
+from wx.shadow import Book, report
 
 T0 = 1_700_000_000 - 1_700_000_000 % 3600
 FEATURES = {"price": 100.0, "spread_pct": 0.2, "atr14_pct": 1.0, "data_age_min": 1.0, "round_trip_cost_pct": 0.8,
@@ -97,3 +97,16 @@ def test_buys_are_funded_in_order_of_the_ai_confidence(tmp_path):
     account = book.account({s: 100.0 for s in table}, T0)
     act(book, decisions, table, account, T0, tmp_path / "orders.jsonl")
     assert [o.symbol for o in book.orders] == ["BBBTMN", "CCCTMN", "AAATMN"]
+
+
+def test_report_shows_active_and_closed_orders(tmp_path):
+
+    log = tmp_path / "orders.jsonl"
+    book = Book()
+    book.place("BTCTMN", "trend", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, log)
+    book.place("ETHTMN", "trend", FEATURES, Verdict(500_000, 4.0, "approved", "approved"), T0, log)
+    book.update({"BTCTMN": minutes(20, low_at=10), "ETHTMN": minutes(20, low_at=10)}, T0 + 1200, log)
+    book.sell_now("ETHTMN", {"price": 110.0, "spread_pct": 0.2}, T0 + 3600, log)
+    text = report(book)
+    assert "open     BTCTMN    trend        1,000,000 TMN  entry 99.9, stop -4.00%" in text
+    assert "closed   ETHTMN" in text and "Closed trades: 1, 1 made money." in text

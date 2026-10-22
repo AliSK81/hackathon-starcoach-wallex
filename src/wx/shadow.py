@@ -123,3 +123,28 @@ class Book:
                 o.status, o.exit_t = "closed", now
                 self.cash += o.tmn * (1 + o.net_pct / 100)
                 append_log(log, {"t": now, "event": "sold", **asdict(o)})
+
+
+def price(p: float) -> str:
+    return f"{p:,.0f}" if p >= 1000 else f"{p:g}"
+
+
+def report(book: Book) -> str:
+    """The shadow book in a few lines: cash, active orders, and closed trades with their results."""
+    closed = [o for o in book.orders if o.status == "closed"]
+    realized = sum(o.tmn * o.net_pct / 100 for o in closed)
+    lines = [f"Cash {book.cash:,.0f} TMN. Peak equity {book.peak:,.0f}. Realized result {realized:+,.0f} TMN "
+             f"({realized / START_TMN * 100:+.2f}% of the start)."]
+    for o in book.active():
+        entry = f"entry {price(o.entry)}" if o.entry else f"limit buy, mid price then {price(o.price)}"
+        lines.append(f"  {o.status:<8} {o.symbol:<9} {o.setup:<10} {o.tmn:>11,.0f} TMN  {entry}, "
+                     f"stop -{o.stop_pct:.2f}%")
+    for o in closed:
+        lines.append(f"  closed   {o.symbol:<9} {o.setup:<10} {o.tmn:>11,.0f} TMN  net {o.net_pct:+.2f}%")
+    cancelled = sum(o.status == "cancelled" for o in book.orders)
+    if closed:
+        wins = sum(o.net_pct > 0 for o in closed)
+        lines.append(f"Closed trades: {len(closed)}, {wins} made money. Cancelled (never filled): {cancelled}.")
+    elif cancelled:
+        lines.append(f"Cancelled (never filled): {cancelled}.")
+    return "\n".join(lines)

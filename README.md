@@ -73,6 +73,12 @@ uv run wx run --shadow --role veto
 ```
 
 ```bash
+uv run wx shadow
+```
+
+This shows the shadow book: cash, orders waiting or open, and closed trades with their results.
+
+```bash
 uv run wx replay
 ```
 

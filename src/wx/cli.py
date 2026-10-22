@@ -22,6 +22,8 @@ from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume
 from wx.prices import watch
 from wx.replay import pick_times, run_replay, sample_times, summary
 from wx.rules import MarketRules
+from wx.shadow import Book
+from wx.shadow import report as shadow_report
 from wx.study import SetupRecord, lookup_from, scan
 from wx.study import report as study_report
 from wx.trades import History
@@ -355,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     replayer.add_argument("--any-time", action="store_true", help="pick any moments, not only ones with a setup")
     replayer.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
                           help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
+    commands.add_parser("shadow", help="show the shadow book: cash, open orders, closed trades")
     tester = commands.add_parser("backtest", help="trade 5,000,000 TMN over the saved history, rules only")
     tester.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     studier = commands.add_parser("study", help="how each buy setup did in the past, without the AI")
@@ -384,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "replay":
         return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers,
                               args.any_time, args.role)
+    if args.command == "shadow":
+        print(shadow_report(Book.load(DATA_DIR / "shadow" / "book.json")))
+        return 0
     if args.command == "backtest":
         return run_backtest(args.symbols, Settings.load())
     if args.command == "study":
