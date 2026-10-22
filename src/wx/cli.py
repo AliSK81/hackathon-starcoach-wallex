@@ -13,6 +13,8 @@ from wx.backtest import scenarios
 from wx.beat import every
 from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
 from wx.config import KEYS, Settings
+from wx.cycle import Context, collect_features, run_cycle, taker_fees
+from wx.cycle import report as cycle_report
 from wx.decide import DEFAULT_ROLE, ROLES, code_version, decide, holdings, log_decision
 from wx.features import FEATURES, market_features
 from wx.llm import LLMError, Reply, chat, chat_with_tools, parse_json
@@ -158,37 +160,11 @@ def features_report(table: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
-def taker_fees(settings: Settings) -> dict[str, float]:
-    """Taker fee per market, or nothing if the key is missing or Wallex fails."""
-    key = settings.get("WALLEX_API_KEY")
-    if not key:
-        print("No WALLEX_API_KEY, so no round-trip cost.")
-        return {}
-    try:
-        return {s: float(r["takerFeeRate"]) for s, r in fetch_fees(key).items()}
-    except WallexError as error:
-        print(f"Could not read fees, so no round-trip cost: {error}")
-        return {}
-
-
-def collect_features(symbols, settings: Settings) -> tuple[dict[str, dict], dict[str, str]]:
-    """Features and errors, each keyed by market. One bad market never stops the rest."""
-    fees = taker_fees(settings)
-    table, errors = {}, {}
-    for symbol in symbols:
-        try:
-            table[symbol] = market_features(symbol, DATA_DIR, fees.get(symbol))
-        except (WallexError, ValueError) as error:
-            errors[symbol] = str(error)
-            print(f"  {symbol}: failed. {error}")
-    return table, errors
-
-
 def run_features(symbols: list[str], settings: Settings) -> int:
     markets = pick_markets(symbols)
     if markets is None:
         return 1
-    table, errors = collect_features(markets, settings)
+    table, errors = collect_features(markets, settings, DATA_DIR)
     if table:
         print(features_report(table))
     return 1 if errors else 0
@@ -201,83 +177,38 @@ def missing_ai_settings(settings: Settings) -> bool:
     return bool(missing)
 
 
-def decision_report(record: dict) -> str:
-    lines = []
-    if record["error"]:
-        lines.append(f"The AI failed, so every market is HOLD: {record['error']}")
-    if record["ai"]:
-        ai = record["ai"]
-        lines.append(f"Model {ai['model']} answered in {ai['seconds']} s. Tokens: {ai['usage'].get('total_tokens', 'unknown')}.")
-    if record["market_view"]:
-        lines.append(f"Market view: {record['market_view']}")
-    for d in record["decisions"]:
-        lines.append(f"  {d['symbol']:<9} {d['action']:<4} {d['confidence']:.2f}  {d['reason']}")
-        if d["cited"]:
-            lines.append("            cited: " + ", ".join(f"{k}={v}" for k, v in d["cited"].items()))
-        for problem in d["problems"]:
-            lines.append(f"            problem: {problem}")
-    for problem in record["problems"]:
-        lines.append(f"Problem: {problem}")
-    return "\n".join(lines)
-
-
-def decision_cycle(markets: dict[str, dict], settings: Settings, cycle: int | None = None) -> dict:
-    """Features, account, one AI decision, and the log line. Returns the record."""
-    table, feature_errors = collect_features(markets, settings)
-    record = {"cycle": cycle, "version": code_version(), "markets": table, "feature_errors": feature_errors,
-              "cash_tmn": None, "held": {}, "account_error": None}
-    if not table:
-        record.update(driver="none", error="no market has features", ai=None, decisions=[])
-        path = log_decision(DATA_DIR, record)
-        print(f"No market has features, so no decision. Logged: {path}")
-        return record
-    key = settings.get("WALLEX_API_KEY")
-    try:
-        if not key:
-            raise WallexError("no WALLEX_API_KEY")
-        rules = {s: MarketRules.from_wallex(info) for s, info in markets.items()}
-        record["cash_tmn"], record["held"] = holdings(fetch_balances(key), rules, table)
-    except WallexError as error:
-        record["account_error"] = str(error)
-        print(f"Could not read the account, so the AI is told cash is unknown and we hold nothing: {error}")
-    base_url, model = settings.get("LLM_BASE_URL"), settings.get("LLM_MODEL")
-    print(f"Asking {model} about {len(table)} markets ...")
-    record.update(decide(table, record["cash_tmn"], record["held"],
-                         lambda messages: chat(base_url, model, settings.get("LLM_API_KEY"), messages, json_mode=True)))
-    path = log_decision(DATA_DIR, record)
-    print(decision_report(record))
-    print(f"Logged: {path}")
-    return record
-
-
-def run_decide(symbols: list[str], settings: Settings) -> int:
+def run_decide(symbols: list[str], settings: Settings, role: str, shadow: bool) -> int:
     if missing_ai_settings(settings):
         return 1
     markets = pick_markets(symbols)
     if markets is None:
         return 1
-    record = decision_cycle(markets, settings)
+    record = run_cycle(Context(markets, settings, DATA_DIR, role, shadow))
+    print(cycle_report(record))
     return 0 if record["driver"] in ("ai", "rules") and not record["feature_errors"] else 1
 
 
-def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int | None) -> int:
-    """`wx run`: a decision on every beat. No orders. Every cycle is logged, even a failed one."""
+def run_loop(symbols: list[str], settings: Settings, interval: int, cycles: int | None, role: str,
+             shadow: bool) -> int:
+    """`wx run`: a decision on every beat. Every cycle is logged, even a failed one. No real orders."""
     if missing_ai_settings(settings):
         return 1
     markets = pick_markets(symbols)
     if markets is None:
         return 1
+    ctx = Context(markets, settings, DATA_DIR, role, shadow)
 
     def step(cycle: int) -> None:
         print(f"--- cycle {cycle} at {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
         try:
-            decision_cycle(markets, settings, cycle)
+            print(cycle_report(run_cycle(ctx, cycle)))
         except Exception as error:  # log it, then let the beat report it and go on
             log_decision(DATA_DIR, {"cycle": cycle, "version": code_version(), "driver": "none",
                                     "error": f"{type(error).__name__}: {error}", "ai": None, "decisions": []})
             raise
 
-    print(f"Deciding on {' '.join(markets)} every {interval} s. No orders. "
+    mode = f"shadow book {ctx.book_path}" if shadow else "no orders"
+    print(f"Deciding on {' '.join(markets)} every {interval} s, role {role}, {mode}. "
           f"Log: {DATA_DIR / 'decisions'}. Ctrl+C stops.")
     try:
         every(interval, step, cycles)
@@ -420,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
     rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     commands.add_parser("ai", help="check the AI settings with one small call")
-    decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no orders)")
+    decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no real orders)")
     decider.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     replayer = commands.add_parser("replay", help="ask the AI about past moments and see what happened next")
     replayer.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
@@ -442,6 +373,10 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument("--interval", type=int, default=DECIDE_EVERY,
                         help=f"seconds between cycles (default {DECIDE_EVERY})")
     runner.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
+    for sub in (decider, runner):
+        sub.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
+                         help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
+        sub.add_argument("--shadow", action="store_true", help="trade a fake book with the risk check")
     features = commands.add_parser("features", help="indicators per market, from candles and the live book")
     features.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
@@ -461,9 +396,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "study":
         return run_study(args.symbols, Settings.load(), args.stops)
     if args.command == "run":
-        return run_loop(args.symbols, Settings.load(), args.interval, args.cycles)
+        return run_loop(args.symbols, Settings.load(), args.interval, args.cycles, args.role, args.shadow)
     if args.command == "decide":
-        return run_decide(args.symbols, Settings.load())
+        return run_decide(args.symbols, Settings.load(), args.role, args.shadow)
     if args.command == "features":
         return run_features(args.symbols, Settings.load())
     if args.command == "markets":

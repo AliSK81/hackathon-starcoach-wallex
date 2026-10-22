@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal
 
-from wx import cli
+from wx import cli, cycle
 from wx.config import Settings
 from wx.decide import build_messages, check_answer, decide, holdings, log_decision
 from wx.features import FEATURES
@@ -164,15 +164,15 @@ def test_wx_decide_end_to_end_without_internet(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "pick_markets", lambda symbols: {
         "BTCTMN": {"symbol": "BTCTMN", "baseAsset": "BTC", "quoteAsset": "TMN", "stepSize": 8, "tickSize": 0,
                    "minQty": "0.00000001", "minNotional": "50000"}})
-    monkeypatch.setattr(cli, "collect_features", lambda symbols, s: ({"BTCTMN": TABLE["BTCTMN"]}, {}))
-    monkeypatch.setattr(cli, "fetch_balances", lambda key: {"TMN": {"value": "5000000", "locked": "0"}})
+    monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": TABLE["BTCTMN"]}, {}))
+    monkeypatch.setattr(cycle, "fetch_balances", lambda key: {"TMN": {"value": "5000000", "locked": "0"}})
     seen = {}
 
     def fake_chat(base_url, model, api_key, messages, json_mode=False):
         seen["messages"] = json.dumps(messages)
         return reply(json.dumps(answer(item())))
 
-    monkeypatch.setattr(cli, "chat", fake_chat)
+    monkeypatch.setattr(cycle, "chat", fake_chat)
     assert cli.main(["decide"]) == 0
     out = capsys.readouterr().out
     assert "BTCTMN    BUY  0.70" in out and "cited: rsi14=72.2" in out

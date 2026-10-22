@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from wx import cli
+from wx import cli, cycle
 from wx import indicators as ind
 from wx.config import Settings
 from wx.features import FEATURES, build_features, closed_bars
@@ -109,7 +109,7 @@ def test_wx_features_prints_a_row_per_feature(monkeypatch, capsys):
             raise ValueError("need 750 closed 1-hour candles, have 3")
         return table
 
-    monkeypatch.setattr(cli, "market_features", fake_market_features)
+    monkeypatch.setattr(cycle, "market_features", fake_market_features)
     assert cli.main(["features"]) == 1
     out = capsys.readouterr().out
     assert "ETHTMN: failed. need 750" in out

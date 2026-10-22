@@ -1,6 +1,6 @@
 import json
 
-from wx import cli
+from wx import cli, cycle
 from wx.beat import every
 from wx.config import Settings
 from wx.llm import LLMError, Reply
@@ -33,7 +33,7 @@ def fake_world(monkeypatch, tmp_path, chat):
     monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
     monkeypatch.setattr(cli, "pick_markets", lambda symbols: {"BTCTMN": {}})
     monkeypatch.setattr(cli, "every", lambda interval, step, cycles: every(interval, step, cycles, sleep=lambda s: None))
-    monkeypatch.setattr(cli, "chat", chat)
+    monkeypatch.setattr(cycle, "chat", chat)
 
 
 def test_run_logs_every_cycle_whatever_happens(monkeypatch, tmp_path, capsys):
@@ -49,14 +49,14 @@ def test_run_logs_every_cycle_whatever_happens(monkeypatch, tmp_path, capsys):
 
     features_calls = []
 
-    def collect(markets, settings):
+    def collect(markets, settings, data_dir):
         features_calls.append(1)
         if len(features_calls) == 3:
             raise RuntimeError("something unexpected")
         return {"BTCTMN": FEATURES}, {}
 
     fake_world(monkeypatch, tmp_path, chat)
-    monkeypatch.setattr(cli, "collect_features", collect)
+    monkeypatch.setattr(cycle, "collect_features", collect)
     assert cli.main(["run", "--cycles", "4"]) == 0
 
     log = read_log(tmp_path)
