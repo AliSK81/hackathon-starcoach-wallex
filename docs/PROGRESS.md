@@ -11,8 +11,8 @@
 Update this after every change.
 
 - **Current phase:** 4 ends with `wx order-test`, then 5 (a 24-hour live run, D46). Phases 2 and 3 done. Phases 6 and 7 in progress.
-- **Live trading:** not live yet
-- **Version trading live:** `live-1` (ready, not started yet)
+- **Live trading:** running since 2026-10-22 17:56 UTC, until 2026-10-23 18:00 UTC. No trade yet: the AI key refuses the model (F64).
+- **Version trading live:** `live-2`
 
 ### What we need from the team
 
