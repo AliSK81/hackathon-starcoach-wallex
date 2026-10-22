@@ -60,6 +60,7 @@ class Position:
     trend_exit: bool = False
     fill_minutes: int = FILL_WINDOW // 60  # how long the buy waits before it is cancelled
     trend_up_seen: bool = False  # the trend was up at some point while held: only then can it "turn" (trend_exit)
+    exit_price: float | None = None  # average price of the sells, from Wallex's fills
 
     @property
     def stop(self) -> float | None:
@@ -256,6 +257,8 @@ class LiveExecutor:
             else:
                 return []
         p.proceeds_tmn += float(state.filled_tmn - state.fee_quote - state.fee_coin * (state.avg_price or 0))
+        if state.avg_price:
+            p.exit_price = float(state.avg_price)
         left = Decimal(p.qty) - state.filled_qty
         p.qty = str(max(left, Decimal(0)))
         if left > 0 and not self.rules[p.symbol].problems(self.rules[p.symbol].round_qty(left), state.price or 1):

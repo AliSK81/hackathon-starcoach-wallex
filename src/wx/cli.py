@@ -17,6 +17,7 @@ from wx.cycle import Context, collect_features, run_cycle, taker_fees
 from wx.cycle import report as cycle_report
 from wx.decide import DEFAULT_ROLE, ROLES, code_version, log_decision
 from wx.features import FEATURES
+from wx.live_report import live_report
 from wx.llm import LLMError, Reply, chat, chat_with_tools, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
@@ -600,7 +601,7 @@ def main(argv: list[str] | None = None) -> int:
         "account": lambda: run_account(Settings.load()),
         "ai": lambda: run_ai(Settings.load()),
         "shadow": lambda: run_shadow_report(),
-        "tradelog": lambda: print(trade_table(trades(DATA_DIR, a.live))) or 0,
+        "tradelog": lambda: print(live_report(DATA_DIR) if a.live else trade_table(trades(DATA_DIR))) or 0,
         "rules": lambda: run_rules(a.symbols),
         "features": lambda: run_features(a.symbols, Settings.load()),
         "backtest": lambda: run_backtest(a.symbols, Settings.load(), a.hours),

@@ -216,6 +216,8 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
                 state = graph.invoke({}, config)
                 print(report(state), flush=True)
                 failures, brain.halted = 0, False
+                if thread == "live":
+                    write_report(data_dir)
             except Exception as error:  # log it and go on at the next beat
                 failures += 1
                 brain.halted = failures >= HALT_AFTER
@@ -245,6 +247,15 @@ def run(brain: Brain, data_dir: Path, thread: str, interval: int, cycles: int | 
         stop.set()
         print(f"Agent loop ended at {datetime.now(UTC):%Y-%m-%d %H:%M:%S} UTC.", flush=True)
     return 0
+
+
+def write_report(data_dir: Path) -> None:
+    """Rebuild the judges' trade report (live_report.py). It must never stop trading."""
+    from wx.live_report import write_live_report
+    try:
+        write_live_report(data_dir)
+    except Exception as error:  # noqa: BLE001
+        print(f"Could not write the trade report: {type(error).__name__}: {error}", flush=True)
 
 
 def parse_end(text: str | None) -> int | None:

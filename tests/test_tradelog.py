@@ -47,3 +47,30 @@ def test_live_orders_are_joined_with_the_live_decisions(tmp_path):
     [row] = trades(tmp_path, live=True)
     assert (row["confidence"], row["status"], row["exit"], row["net_pct"]) == (0.7, "closed", "stop", -1.2)
     assert trades(tmp_path) == []  # the shadow log is separate
+
+
+def test_the_live_report_explains_each_trade(tmp_path):
+    from wx.live_report import live_report
+    live = tmp_path / "live"
+    (live / "decisions").mkdir(parents=True)
+    base = {"symbol": "SOLTMN", "setup": "stretched_dip", "tmn": 900_000, "stop_pct": 6.0, "max_hours": 12,
+            "trend_exit": True, "buy_id": "wx_b_1"}
+    events = [{"t": T0, "event": "buy placed", **base, "status": "buying", "price": "100", "quantity": "9000"},
+              {"t": T0, "event": "bought", **base, "status": "open", "qty": "8977.5", "entry": 100.0,
+               "cost_tmn": 900_000},
+              {"t": T0, "event": "closed", **base, "status": "closed", "qty": "0.5", "entry": 100.0,
+               "cost_tmn": 900_000, "proceeds_tmn": 905_000, "net_pct": 0.556, "exit_price": 101.0,
+               "sell_reason": "plan exit (time or trend)", "exit_t": T0 + 7200}]
+    (live / "orders.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
+    record = {"time": "2023-11-14T22:14:00+00:00", "decided_at": T0, "role": "brain", "version": "0.1.0+abc",
+              "plan": {"buys": []}, "account": {"equity": 5_005_000},
+              "markets": {"SOLTMN": {"setups": ["stretched_dip"], "rsi14": 27.0, "bb_z_20": -2.6}},
+              "decisions": [{"symbol": "SOLTMN", "action": "BUY", "strategy": "stretched_dip", "conviction": 0.7,
+                             "reason": "deep dip", "invalidation": "new low", "risk_pct": 1.5, "stop_pct": 6.0,
+                             "order": "maker", "judge": "fine", "verdict": {"tmn": 900_000, "reason": "approved"}}]}
+    (live / "decisions" / "d.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+    text = live_report(tmp_path, now=T0 + 7300)
+    assert "| Return | +0.10% |" in text and "1 won, average +0.56%" in text and "0.5 SOL" in text
+    assert "Signal seen by code:** stretched_dip. Numbers: rsi14 27.0, bb_z_20 -2.6" in text
+    assert "Reason: deep dip" in text and "Judge (AI):** fine" in text and "at 101" in text
+    assert "`0.1.0+abc`" in text and "buy placed -> bought -> closed" in text
