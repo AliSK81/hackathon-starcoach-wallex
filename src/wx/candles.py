@@ -33,6 +33,17 @@ def candle_path(data_dir: Path, symbol: str, size: str) -> Path:
     return data_dir / "candles" / f"{symbol}_{size}.csv"
 
 
+def last_close(path: Path) -> float | None:
+    """Close of the newest saved candle, read from the end of the file. None if there is none."""
+    if not path.is_file():
+        return None
+    with path.open("rb") as f:
+        f.seek(0, 2)
+        f.seek(max(0, f.tell() - 200))
+        last = f.read().decode("utf-8").strip().splitlines()[-1].split(",")
+    return float(last[4]) if last[0].isdigit() else None
+
+
 def load_candles(path: Path) -> dict[int, list]:
     """Saved candles keyed by time. A missing file gives an empty dict."""
     if not path.is_file():

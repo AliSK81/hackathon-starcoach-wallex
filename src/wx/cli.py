@@ -11,7 +11,7 @@ from wx.account import fee_groups, nonzero_balances, save_account
 from wx.agent import review_tools
 from wx.backtest import scenarios
 from wx.beat import every
-from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, update_candles
+from wx.candles import DEFAULT_SYMBOLS, KEEP_DAYS, SIZES, candle_path, last_close, update_candles
 from wx.config import KEYS, Settings
 from wx.cycle import Context, collect_features, live_spreads, run_cycle, taker_fees
 from wx.cycle import report as cycle_report
@@ -333,6 +333,14 @@ def run_watch(symbols: list[str], interval: int, cycles: int | None) -> int:
     return 0
 
 
+def run_shadow_report() -> int:
+    """The shadow book, with open positions valued at the last saved 1-minute closes."""
+    book = Book.load(DATA_DIR / "shadow" / "book.json")
+    prices = {o.symbol: last_close(candle_path(DATA_DIR, o.symbol, "1m")) for o in book.active()}
+    print(shadow_report(book, {s: p for s, p in prices.items() if p}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wx", description="Wallex trading bot.")
     parser.add_argument("--version", action="version", version=f"wx {__version__}")
@@ -391,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         "markets": lambda: run_markets(),
         "account": lambda: run_account(Settings.load()),
         "ai": lambda: run_ai(Settings.load()),
-        "shadow": lambda: print(shadow_report(Book.load(DATA_DIR / "shadow" / "book.json"))) or 0,
+        "shadow": lambda: run_shadow_report(),
         "rules": lambda: run_rules(a.symbols),
         "features": lambda: run_features(a.symbols, Settings.load()),
         "backtest": lambda: run_backtest(a.symbols, Settings.load()),

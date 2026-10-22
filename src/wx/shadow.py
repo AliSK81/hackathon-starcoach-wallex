@@ -129,14 +129,27 @@ def price(p: float) -> str:
     return f"{p:,.0f}" if p >= 1000 else f"{p:g}"
 
 
-def report(book: Book) -> str:
-    """The shadow book in a few lines: cash, active orders, and closed trades with their results."""
+def report(book: Book, prices: dict[str, float] | None = None) -> str:
+    """The shadow book in a few lines: equity, active orders, and closed trades with their results.
+
+    prices (e.g. the last saved closes) value the open positions. Without them, they count at cost.
+    """
+    prices = prices or {}
     closed = [o for o in book.orders if o.status == "closed"]
     realized = sum(o.tmn * o.net_pct / 100 for o in closed)
-    lines = [f"Cash {book.cash:,.0f} TMN. Peak equity {book.peak:,.0f}. Realized result {realized:+,.0f} TMN "
-             f"({realized / START_TMN * 100:+.2f}% of the start)."]
+
+    def worth(o: Order) -> float:
+        return o.tmn * (prices[o.symbol] / o.entry if o.status == "open" and o.symbol in prices else 1)
+
+    equity = book.cash + sum(worth(o) for o in book.active())
+    lines = [f"Equity {equity:,.0f} TMN ({(equity / START_TMN - 1) * 100:+.2f}%). Cash {book.cash:,.0f}. "
+             f"Realized {realized:+,.0f} TMN. Peak {book.peak:,.0f}."]
     for o in book.active():
-        entry = f"entry {price(o.entry)}" if o.entry else f"limit buy, mid price then {price(o.price)}"
+        if o.entry:
+            now = f", now {(worth(o) / o.tmn - 1) * 100:+.2f}%" if o.symbol in prices else ""
+            entry = f"entry {price(o.entry)}{now}"
+        else:
+            entry = f"limit buy, mid price then {price(o.price)}"
         lines.append(f"  {o.status:<8} {o.symbol:<9} {o.setup:<10} {o.tmn:>11,.0f} TMN  {entry}, "
                      f"stop -{o.stop_pct:.2f}%")
     for o in closed:

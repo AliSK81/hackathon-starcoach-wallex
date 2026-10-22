@@ -122,3 +122,12 @@ def test_orders_carry_the_time_of_their_decision(monkeypatch, tmp_path):
     record = run_cycle(ctx, 1)
     logged = json.loads(next((tmp_path / "decisions").glob("*.jsonl")).read_text(encoding="utf-8"))
     assert logged["decided_at"] == record["decided_at"] == Book.load(ctx.book_path).orders[0].t
+
+
+def test_report_values_open_positions_at_given_prices(tmp_path):
+    log = tmp_path / "orders.jsonl"
+    book = Book()
+    book.place("BTCTMN", "trend", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, log)
+    book.update({"BTCTMN": minutes(20, low_at=10)}, T0 + 1200, log)
+    text = report(book, {"BTCTMN": 109.89})
+    assert "now +10.00%" in text and "Equity 5,100,000 TMN (+2.00%)" in text

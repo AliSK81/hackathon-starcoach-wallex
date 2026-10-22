@@ -1,7 +1,7 @@
 import pytest
 
 from wx import candles, cli
-from wx.candles import candle_path, load_candles, update_candles, windows
+from wx.candles import candle_path, last_close, load_candles, update_candles, windows
 from wx.wallex import WallexError
 
 DAY = 86400
@@ -95,3 +95,13 @@ def test_candles_command_refuses_forbidden_symbol(monkeypatch, tmp_path, capsys)
     assert cli.main(["candles", "tontmn"]) == 1
     assert "Not allowed or not on Wallex: TONTMN" in capsys.readouterr().out
     assert not (tmp_path / "candles").exists()
+
+
+def test_last_close_reads_the_end_of_the_file(tmp_path):
+
+    path = tmp_path / "X_1m.csv"
+    assert last_close(path) is None
+    path.write_text("t,o,h,l,c,v\n" + "".join(f"{i},1,2,0.5,{i}.5,3\n" for i in range(100, 200)), encoding="utf-8")
+    assert last_close(path) == 199.5
+    path.write_text("t,o,h,l,c,v\n", encoding="utf-8")
+    assert last_close(path) is None
