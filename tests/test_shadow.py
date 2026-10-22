@@ -12,7 +12,7 @@ from wx.shadow import Book
 
 T0 = 1_700_000_000 - 1_700_000_000 % 3600
 FEATURES = {"price": 100.0, "spread_pct": 0.2, "atr14_pct": 1.0, "data_age_min": 1.0, "round_trip_cost_pct": 0.8,
-            "setups": ["sharp_drop"], "rsi14": 25.0}
+            "setups": ["trend"], "rsi14": 25.0}
 
 
 def minutes(n, low_at=None, low=99.8, crash_at=None):
@@ -76,7 +76,7 @@ def test_shadow_cycle_places_an_approved_buy(monkeypatch, tmp_path):
     settings = Settings({"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-x"})
     monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": FEATURES}, {}))
     answer = {"market_view": "dip", "decisions": [{"symbol": "BTCTMN", "action": "BUY", "confidence": 0.6,
-                                                   "setup": "sharp_drop", "reason": "r", "cited": ["rsi14"]}]}
+                                                   "setup": "trend", "reason": "r", "cited": ["rsi14"]}]}
     monkeypatch.setattr(cycle, "chat", lambda *a, **k: Reply(json.dumps(answer), "m1", 1.0))
     ctx = Context({"BTCTMN": {}}, settings, tmp_path, role="veto", shadow=True)
     record = run_cycle(ctx, 1)

@@ -1,9 +1,9 @@
 """Shadow trading: fake orders on live data, with the same rules as the backtest.
 
-A fake order keeps what was known when it was placed. Every cycle, the
-backtest's own trade() replays it over the 1-minute candles saved so far:
-not filled yet, filled and open, stopped, or done after 24 hours. So shadow
-and backtest can't drift apart. The book is one JSON file, so a restart
+A fake order keeps what was known when it was placed. Every cycle, trade()
+replays it over the candles saved so far: not filled yet, filled and open,
+stopped, or closed by its setup's exit rule. The backtest uses the same
+trade(), so shadow and backtest can't drift apart. The book is one JSON file, so a restart
 loses nothing. Every placed, filled, cancelled and closed order is logged.
 """
 
@@ -11,10 +11,10 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from wx.backtest import FILL_WINDOW, MAKER_FEE_PCT, START_TMN, TAKER_FEE_PCT, trade
+from wx.backtest import START_TMN
 from wx.prices import append_log
-from wx.replay import History
 from wx.risk import Account, Verdict, update_peak
+from wx.trades import FILL_WINDOW, MAKER_FEE_PCT, TAKER_FEE_PCT, History, trade
 
 
 @dataclass
@@ -64,21 +64,30 @@ class Book:
     def update(self, histories: dict[str, History], now: int, log: Path) -> None:
         """Replay every active order over the candles saved up to now, and settle what is done."""
         for o in self.active():
-            done = trade(histories[o.symbol], o.t, {"price": o.price, "spread_pct": o.spread_pct}, o.stop_pct, "limit")
+            h = histories[o.symbol]
+
+            def features_at(hour: int, h=h, o=o) -> dict | None:
+                try:
+                    return h.features_at(hour, o.spread_pct, None)
+                except ValueError:
+                    return None
+
+            f = {"price": o.price, "spread_pct": o.spread_pct}
+            done = trade(h, o.setup, o.t, f, o.stop_pct, "limit", features_at, now)
             if done is None:
                 if now >= o.t + FILL_WINDOW:
                     o.status = "cancelled"
                     self.cash += o.tmn
                     append_log(log, {"t": now, "event": "cancelled", **asdict(o)})
                 continue
-            o.entry_t, o.entry, exit_t, net_pct = done
+            o.entry_t, o.entry = done.entry_t, done.entry
             if o.status == "waiting":
                 o.status = "open"
                 append_log(log, {"t": now, "event": "filled", **asdict(o)})
-            if exit_t <= now:
-                o.status, o.exit_t, o.net_pct = "closed", exit_t, round(net_pct, 3)
-                self.cash += o.tmn * (1 + net_pct / 100)
-                append_log(log, {"t": now, "event": "closed", **asdict(o)})
+            if done.exit_t is not None:
+                o.status, o.exit_t, o.net_pct = "closed", done.exit_t, round(done.net_pct, 3)
+                self.cash += o.tmn * (1 + done.net_pct / 100)
+                append_log(log, {"t": now, "event": "closed", "reason": done.exit_reason, **asdict(o)})
 
     def account(self, prices: dict[str, float], now: int) -> Account:
         """Equity at these prices. Waiting orders count at their full size."""

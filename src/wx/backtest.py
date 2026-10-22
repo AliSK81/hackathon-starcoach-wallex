@@ -1,9 +1,9 @@
 """Portfolio backtest: 5,000,000 TMN traded hour by hour over the saved history.
 
-Every hour, in time order: positions whose exit has come are closed. Then
-the policy names markets to buy, and the risk check sizes or rejects each
-buy. A buy is held 24 hours, or until its stop. Results are after costs.
-The same risk check runs in shadow and live trading.
+Every hour, in time order: positions that have exited are closed. Then the
+policy names markets to buy, and the risk check sizes or rejects each buy.
+Each buy plays out with trade(): its setup's exit, the stop, the costs. The
+same risk check and trade() run in shadow trading.
 """
 
 from collections import defaultdict
@@ -11,8 +11,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from statistics import mean
 
-from wx.replay import HORIZON, History
+from wx.replay import Lookup
 from wx.risk import Account, Limits, check_buy, update_peak
+from wx.study import lookup_from
+from wx.trades import History, Trade, trade
 
 START_TMN = 5_000_000
 
@@ -33,16 +35,7 @@ class Position:
     symbol: str
     setup: str
     tmn: float
-    entry_t: int
-    entry: float
-    exit_t: int
-    net_pct: float  # result after costs, known in advance from the history
-
-
-# Fees on TMN markets (F3), and how long a limit buy waits to fill.
-MAKER_FEE_PCT = 0.25
-TAKER_FEE_PCT = 0.30
-FILL_WINDOW = 3600
+    trade: Trade
 
 
 @dataclass
@@ -65,98 +58,76 @@ class Result:
         return worst * 100
 
 
-def trade(history: History, t: int, f: dict, stop_pct: float, orders: str) -> tuple[int, float, int, float] | None:
-    """One buy at t: (entry time, entry price, exit time, net result % after costs), or None if never filled.
-
-    "taker": buy now at the mid price, sell at the exit, pay round_trip_cost_pct.
-    "limit": a limit buy at the bid fills only if the price trades below it
-    within FILL_WINDOW, paying the maker fee. A sell after 24 hours is a limit
-    sell at the price then (maker fee). A stop is a market sell (taker fee and
-    half the spread).
-    """
-    if orders == "taker":
-        move, exit_t = history.exit_after(t, f["price"], stop_pct)
-        return t, f["price"], exit_t, move - (f["round_trip_cost_pct"] or 0.0)
-    half_spread = f["spread_pct"] / 2
-    bid = f["price"] * (1 - half_spread / 100)
-    filled = history.first_below(t, t + FILL_WINDOW, bid)
-    if filled is None:
-        return None
-    move, exit_t = history.exit_after(filled, bid, stop_pct)
-    stopped = exit_t < filled + HORIZON
-    exit_cost = TAKER_FEE_PCT + half_spread if stopped else MAKER_FEE_PCT
-    return filled, bid, exit_t, move - MAKER_FEE_PCT - exit_cost
-
-
 def run(rows: list[dict], histories: dict[str, History], policy: Policy, limits: Limits = Limits(),
-        orders: str = "taker") -> Result:
-    """Trade the policy over the scanned hours (see study.scan), with "taker" or "limit" orders."""
-    hours = defaultdict(dict)
+        orders: str = "taker", lookup: Lookup | None = None) -> Result:
+    """Trade the policy over the scanned hours (see study.scan), with "taker" or "limit" orders.
+
+    lookup gives features for the exits. By default it covers the same rows. Give a wider
+    one so that trades opened near the end of `rows` can still exit by their rule.
+    """
+    hours, lookup = defaultdict(dict), lookup or lookup_from(rows)
     for row in rows:
         hours[row["t"]][row["symbol"]] = row["features"]
     cash, peak, halted_since, day, day_start = float(START_TMN), float(START_TMN), None, None, float(START_TMN)
-    open_, trades, curve, rejected = [], [], [], defaultdict(int)
+    open_, closed, curve, rejected = [], [], [], defaultdict(int)
     for t in sorted(hours):
-        for p in [p for p in open_ if p.exit_t <= t]:
-            cash += p.tmn * (1 + p.net_pct / 100)
+        for p in [p for p in open_ if p.trade.exit_t <= t]:
+            cash += p.tmn * (1 + p.trade.net_pct / 100)
             open_.remove(p)
-            trades.append(p)
-        equity = cash + sum(p.tmn * histories[p.symbol].close_at(t) / p.entry for p in open_ if p.entry_t <= t)
-        equity += sum(p.tmn for p in open_ if p.entry_t > t)  # bought, but the limit order fills later
+            closed.append(p)
+        equity = cash + sum(p.tmn * (histories[p.symbol].close_at(t) / p.trade.entry if p.trade.entry_t <= t else 1)
+                            for p in open_)
         peak, halted_since = update_peak(peak, equity, halted_since, t, limits)
         if day != t // 86400:
             day, day_start = t // 86400, equity
         table = hours[t]
         for symbol, setup in policy(t, table, {p.symbol for p in open_}):
             f = table[symbol]
-            account = Account(equity, cash, sum(p.tmn for p in open_), peak, day_start)
-            verdict = check_buy(f, account, limits=limits)
+            verdict = check_buy(f, Account(equity, cash, sum(p.tmn for p in open_), peak, day_start), limits=limits)
             if not verdict.tmn:
                 rejected[verdict.rule] += 1
                 continue
-            done = trade(histories[symbol], t, f, verdict.stop_pct, orders)
+            done = trade(histories[symbol], setup, t, f, verdict.stop_pct, orders, lambda h, s=symbol: lookup(s, h))
             if done is None:
                 rejected["limit buy never filled"] += 1
                 continue
-            open_.append(Position(symbol, setup, verdict.tmn, *done))
+            open_.append(Position(symbol, setup, verdict.tmn, done))
             cash -= verdict.tmn
         curve.append((t, equity))
-    for p in open_:
-        cash += p.tmn * (1 + p.net_pct / 100)
-        trades.append(p)
-    return Result(cash, trades, curve, dict(rejected))
+    for p in open_:  # trade() closed these at the end of the data
+        cash += p.tmn * (1 + p.trade.net_pct / 100)
+        closed.append(p)
+    return Result(cash, closed, curve, dict(rejected))
 
 
 def report(result: Result, name: str) -> str:
-    trades = result.trades
+    nets = [p.trade.net_pct for p in result.trades]
     days = (result.curve[-1][0] - result.curve[0][0]) / 86400 if result.curve else 0
-    line = (f"{name:<28} return {result.return_pct:+6.2f}%  max drawdown {result.max_drawdown_pct:5.2f}%  "
-            f"trades {len(trades):>4} ({len(trades) / max(days, 1):.1f}/day)")
-    if trades:
-        line += (f"  win {sum(p.net_pct > 0 for p in trades) / len(trades):.0%}"
-                 f"  average trade {mean(p.net_pct for p in trades):+.2f}%")
+    line = (f"{name:<26} return {result.return_pct:+6.2f}%  max drawdown {result.max_drawdown_pct:5.2f}%  "
+            f"trades {len(nets):>4} ({len(nets) / max(days, 1):.1f}/day)")
+    if nets:
+        line += f"  win {sum(n > 0 for n in nets) / len(nets):.0%}  average trade {mean(nets):+.2f}%"
     return line
 
 
-# Rules-only policies to compare. The AI policy is added when its answers are saved.
+# Rules-only policies to compare.
 POLICIES = {
-    "every setup": ("sharp_drop", "oversold", "breakout", "trend_momentum"),
+    "all setups": ("trend", "sharp_drop", "oversold"),
+    "trend": ("trend",),
     "mean reversion": ("sharp_drop", "oversold"),
-    "trend": ("breakout", "trend_momentum"),
-    "sharp_drop": ("sharp_drop",),
-    "oversold": ("oversold",),
 }
+
 
 def scenarios(rows: list[dict], histories: dict[str, History]) -> str:
     """Every policy, with taker and with limit orders, over all hours and over each half."""
     middle = sorted(r["t"] for r in rows)[len(rows) // 2]
     periods = {"all": rows, "1st half": [r for r in rows if r["t"] < middle],
                "2nd half": [r for r in rows if r["t"] >= middle]}
-    lines = []
+    lines, lookup = [], lookup_from(rows)
     for orders in ("taker", "limit"):
         lines.append(f"--- {orders} orders")
         for name, setups in POLICIES.items():
             for period, part in periods.items():
-                result = run(part, histories, setups_policy(setups), orders=orders)
+                result = run(part, histories, setups_policy(setups), orders=orders, lookup=lookup)
                 lines.append(report(result, f"{name}, {period}"))
     return "\n".join(lines)

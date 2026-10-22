@@ -80,19 +80,21 @@ Buy setups:
 - You may only BUY a market through one of its active setups, and you must name it. A market
   with no active setup is HOLD.
 """, tuple(SETUPS)),
-    # Code buys the mean-reversion setups. The AI may only stop a buy, for a serious danger.
+    # Code buys through the trend setup. The AI may only stop a buy, for a specific danger (D29).
     "veto": Role("""
 Buy setups:
-- Code buys a market when one of its mean-reversion setups is active: sharp_drop or oversold
-  (see the "setups" feature and setup_meanings). Other setups in the "setups" feature are for
-  information only.
-- Your job is to veto. For each market where sharp_drop or oversold is active, answer BUY to let
-  the buy go ahead, or HOLD to stop it. Stop it only for a specific, serious danger you can point
-  to in the features, for example a crash that is still going on across all markets, or data
-  that looks broken. A normal fall is what these setups are built to buy, so it is not a reason
-  to stop.
+- Code buys a market when its trend setup is active (see the "setups" feature and
+  setup_meanings). Other setups in the "setups" feature are for information only.
+- Your job is to veto. For each market where trend is active, answer BUY to let the buy go
+  ahead, or HOLD to stop it. Stop it only for a specific danger you can point to in the
+  features, for example: the move is already very stretched (RSI far above 70, the price far
+  above its averages), so a normal pullback would hit the stop; the market is illiquid (many
+  zero-volume hours, a wide spread); or the data looks broken. A strong trend alone is not a
+  reason to stop.
 - For a BUY, name the setup. Every other market is HOLD.
-""", ("sharp_drop", "oversold")),
+- Code already sells when the trend turns or the stop is hit. Say SELL for a market we hold
+  only for a serious danger you can name.
+""", ("trend",)),
 }
 # The veto role with tools: the AI can look closer before it lets a buy go ahead or stops it.
 AGENT_TEXT = """- You have tools. Before deciding on a candidate, look closer where it helps: the shape of
@@ -165,7 +167,7 @@ def build_messages(table: dict[str, dict], cash_tmn: int | None, held: dict, rol
                    setup_history: dict | None = None) -> list[dict]:
     facts = {
         "feature_meanings": FEATURES,
-        "setup_meanings": {name: meaning for name, (meaning, _) in SETUPS.items()},
+        "setup_meanings": {name: f"{s.meaning}. Exit: {s.exit_meaning}." for name, s in SETUPS.items()},
         "market_names": list(table),
         "cash_tmn": cash_tmn if cash_tmn is not None else "unknown",
         "held": held,

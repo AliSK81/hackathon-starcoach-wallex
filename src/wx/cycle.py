@@ -16,11 +16,11 @@ from wx.config import Settings
 from wx.decide import DEFAULT_ROLE, ROLES, code_version, decide, holdings, log_decision
 from wx.features import HOUR, closed_bars, market_features
 from wx.llm import Reply, chat, chat_with_tools
-from wx.replay import History
 from wx.risk import check_buy
 from wx.rules import MarketRules
 from wx.shadow import Book
 from wx.study import SetupRecord, scan
+from wx.trades import History
 from wx.wallex import WallexError, fetch_balances, fetch_best_prices, fetch_fees
 
 SETUP_RECORD_HOURS = 24  # how often the agent's setup record is rebuilt

@@ -1,11 +1,10 @@
 import json
 
-import pytest
-
 from wx.decide import decide
 from wx.llm import LLMError, Reply
-from wx.replay import BEAT, History, pick_times, replay_moment, run_replay, sample_times, summary
+from wx.replay import BEAT, pick_times, replay_moment, run_replay, sample_times, summary
 from wx.study import SetupRecord, entries, report, scan
+from wx.trades import History
 
 T0 = 1_700_000_000 - 1_700_000_000 % 3600
 
@@ -36,16 +35,6 @@ def test_a_sharp_drop_is_an_active_setup():
     assert history().features_at(T0, 0.2, 0.003)["setups"] == []
 
 
-def test_stop_loss_exit():
-    h = History([], [[T0 + i * 60, 100, 100, 100, 100, 1] for i in range(1440)])
-    h.minutes[100] = [T0 + 6000, 100, 100, 94, 99, 1]  # low touches 94: a 5% stop at 95 is hit
-    assert h.exit_after(T0, 100.0, 5.0) == (pytest.approx(-5.0), T0 + 6060)
-    assert h.exit_after(T0, 100.0, 10.0) == (0.0, T0 + 86400)
-    assert h.exit_after(T0, 100.0, None) == (0.0, T0 + 86400)
-    h.minutes[50] = [T0 + 3000, 90, 90, 90, 90, 1]  # opens below the stop: exit at the open
-    assert h.exit_after(T0, 100.0, 5.0) == (pytest.approx(-10.0), T0 + 3000)
-
-
 def test_moments_are_on_the_beat_repeatable_and_inside_the_window():
     a = sample_times(T0, T0 + 10 * 86400, 20, seed=7)
     assert a == sample_times(T0, T0 + 10 * 86400, 20, seed=7)
@@ -63,12 +52,18 @@ def buy_reply(messages, *moment):
     return Reply(text=json.dumps(answer), model="m1", seconds=1.0)
 
 
-def test_moment_records_what_happened_next():
+def no_lookup(symbol, hour):
+    return None
+
+
+def test_moment_records_how_each_setup_played_out():
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
-    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply)
+    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup)
     assert result["driver"] == "ai" and result["decisions"][0]["action"] == "BUY"
-    # 90 -> 99 is +10%. The cost is 2 x 0.3% fee + 0.2% spread = 0.8%. No stop is hit.
-    assert result["outcomes"]["BTCTMN"] == {"fwd_24h_pct": 10.0, "net_pct": 9.2, "net_stop_pct": 9.2, "stopped": False}
+    # 90 -> 99 is +10%. The cost is 2 x 0.3% fee + 0.2% spread = 0.8%. No stop is hit, and with
+    # no features for later hours the trade runs to the end of the data.
+    outcome = result["outcomes"]["BTCTMN"]
+    assert outcome["fwd_24h_pct"] == 10.0 and outcome["by_setup"]["sharp_drop"] == 9.2
 
 
 def test_replay_logs_each_moment_and_survives_ai_failures(tmp_path):
@@ -82,7 +77,8 @@ def test_replay_logs_each_moment_and_survives_ai_failures(tmp_path):
 
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
     log = tmp_path / "replay" / "run.jsonl"
-    results = run_replay([T0, T0 + 900], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, flaky, log, workers=1)
+    results = run_replay([T0, T0 + 900], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, flaky, no_lookup, log,
+                         workers=1)
     assert len(log.read_text(encoding="utf-8").splitlines()) == 2
     assert sorted(r["driver"] for r in results) == ["ai", "fallback"]
     text = summary(results)
@@ -91,7 +87,6 @@ def test_replay_logs_each_moment_and_survives_ai_failures(tmp_path):
     assert "Role: pick" in text
     assert "every setup this role may take        2" in text
     assert "of those, the ones the AI skipped     1" in text
-    assert "every active setup                    2" in text
     assert "AI buys per setup: sharp_drop 1" in text
 
 
@@ -99,17 +94,18 @@ def test_study_counts_one_entry_per_market_per_day():
     rows = [{"symbol": "BTCTMN", "t": T0 + h * 3600, "features": {"setups": ["oversold"]}} for h in range(30)]
     rows += [{"symbol": "ETHTMN", "t": T0, "features": {"setups": []}}]
     assert [r["t"] for r in entries(rows, "oversold")] == [T0, T0 + 24 * 3600]
-    assert entries(rows, "breakout") == []
+    assert entries(rows, "trend") == []
     assert len(entries(rows, None)) == 2
 
 
-def test_setup_record_only_counts_entries_that_are_over():
+def test_setup_record_only_counts_trades_that_are_over():
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
     rows = [{"symbol": "BTCTMN", "t": T0, "features": histories["BTCTMN"].features_at(T0, 0.2, 0.003)}]
     record = SetupRecord(rows, histories)
-    assert record.at(T0 + 86399)["sharp_drop"] == {"entries": 0, "average_net_pct": None, "made_money_pct": None}
-    assert record.at(T0 + 86400)["sharp_drop"] == {"entries": 1, "average_net_pct": 9.2, "made_money_pct": 100}
-    assert record.at(T0 + 86400)["breakout"]["entries"] == 0
+    end = histories["BTCTMN"].end  # with no later features, the trade closes at the end of the data
+    assert record.at(end - 1)["sharp_drop"] == {"trades": 0, "average_net_pct": None, "made_money_pct": None}
+    assert record.at(end)["sharp_drop"] == {"trades": 1, "average_net_pct": 9.2, "made_money_pct": 100}
+    assert record.at(end)["trend"]["trades"] == 0
 
 
 def test_informed_role_sends_the_setup_record_to_the_ai():
@@ -121,24 +117,24 @@ def test_informed_role_sends_the_setup_record_to_the_ai():
         return buy_reply(messages)
 
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
-    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, ask, "informed",
+    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, ask, no_lookup, "informed",
                            lambda t: {"sharp_drop": {"entries": 3}})
     assert result["role"] == "informed" and result["decisions"][0]["action"] == "BUY"
     assert seen["facts"]["setup_history"] == {"sharp_drop": {"entries": 3}}
     assert "setup_history gives each setup's past results" in seen["system"]
 
 
-def test_veto_role_may_not_buy_through_a_trend_setup():
+def test_veto_role_may_not_buy_a_dip():
     f = history(drop_to=90.0).features_at(T0, 0.2, 0.003)
-    trend = {**f, "setups": ["trend_momentum"]}
-    answer = {"decisions": [{"symbol": "BTCTMN", "action": "BUY", "confidence": 0.6, "setup": "trend_momentum",
+    dip = {**f, "setups": ["sharp_drop"]}
+    answer = {"decisions": [{"symbol": "BTCTMN", "action": "BUY", "confidence": 0.6, "setup": "sharp_drop",
                              "cited": ["rsi14"]}]}
-    record = decide({"BTCTMN": trend}, 5_000_000, {}, lambda m: Reply(json.dumps(answer), "m1", 1.0), "veto")
+    record = decide({"BTCTMN": dip}, 5_000_000, {}, lambda m: Reply(json.dumps(answer), "m1", 1.0), "veto")
     assert record["driver"] == "rules"  # nothing the veto role may take, so the AI is not asked
-    both = {**f, "setups": ["sharp_drop", "trend_momentum"]}
+    both = {**f, "setups": ["sharp_drop", "trend"]}
     record = decide({"BTCTMN": both}, 5_000_000, {}, lambda m: Reply(json.dumps(answer), "m1", 1.0), "veto")
     assert record["driver"] == "ai" and record["decisions"][0]["action"] == "HOLD"
-    assert "active and allowed: sharp_drop" in record["decisions"][0]["problems"][0]
+    assert "active and allowed: trend" in record["decisions"][0]["problems"][0]
 
 
 def test_study_report_runs_on_a_small_history():
@@ -146,4 +142,4 @@ def test_study_report_runs_on_a_small_history():
     rows = scan(histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003})
     assert rows and all(r["t"] % 3600 == 0 for r in rows)
     text = report(rows, histories, [4.0])
-    assert "sharp_drop: 0 entries" in text and "Every hour, no stop" in text
+    assert "sharp_drop: 0 entries" in text and "trend: " in text and "stop 4 ATR" in text

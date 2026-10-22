@@ -1,8 +1,8 @@
 import pytest
 
-from wx.backtest import START_TMN, run, setups_policy, trade
-from wx.replay import History
+from wx.backtest import START_TMN, run, setups_policy
 from wx.risk import Account, Limits, check_buy, update_peak
+from wx.trades import History
 
 FEATURES = {"atr14_pct": 1.0, "data_age_min": 1.0}  # stop 4 x 1% = 4% below the entry
 FRESH = Account(equity=5_000_000, cash=5_000_000, exposure=0, peak=5_000_000, day_start=5_000_000)
@@ -45,7 +45,7 @@ def test_backtest_trades_a_setup_and_pays_the_cost():
             {"symbol": "BTCTMN", "t": t0 + 3600, "features": {**features, "setups": []}}]
     result = run(rows, {"BTCTMN": history}, setups_policy(("sharp_drop",)))
     [done] = result.trades
-    assert done.tmn == 937_500 and done.net_pct == pytest.approx(9.0)  # +10% move, 1% cost
+    assert done.tmn == 937_500 and done.trade.net_pct == pytest.approx(9.0)  # +10% move, 1% cost
     assert result.final == pytest.approx(START_TMN + 937_500 * 0.09)
     assert run(rows, {"BTCTMN": history}, setups_policy(("breakout",))).trades == []
 
@@ -56,18 +56,3 @@ def test_drawdown_halt_ends_after_a_day():
     assert update_peak(5_000_000, 4_600_000, None, 100) == (5_000_000, 100)  # 8% down: halt starts
     assert update_peak(5_000_000, 4_600_000, 100, 100 + 23 * 3600) == (5_000_000, 100)
     assert update_peak(5_000_000, 4_600_000, 100, 100 + 24 * 3600) == (4_600_000, None)  # the peak resets
-
-
-def test_limit_buy_fills_only_if_the_price_trades_below_the_bid():
-    t0 = 1_700_000_000 - 1_700_000_000 % 3600
-    flat = [[t0 + i * 60, 100.0, 100.0, 100.0, 100.0, 1.0] for i in range(1600)]
-    f = {"price": 100.0, "spread_pct": 0.2, "round_trip_cost_pct": 0.8}  # bid 99.9
-    assert trade(History([], flat), t0, f, 4.0, "limit") is None
-    dip = [row[:] for row in flat]
-    dip[10][3] = 99.8  # trades below the bid in minute 10
-    entry_t, entry, exit_t, net = trade(History([], dip), t0, f, 4.0, "limit")
-    assert (entry_t, entry, exit_t) == (t0 + 660, pytest.approx(99.9), t0 + 660 + 86400)
-    # Sold at 100 after 24 hours: +0.1% move, maker fee in and out (0.5%).
-    assert net == pytest.approx(100 / 99.9 * 100 - 100 - 0.5)
-    taker = trade(History([], flat), t0, f, 4.0, "taker")
-    assert taker == (t0, 100.0, t0 + 86400, pytest.approx(-0.8))

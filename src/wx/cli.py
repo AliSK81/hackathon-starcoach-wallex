@@ -20,10 +20,11 @@ from wx.features import FEATURES
 from wx.llm import LLMError, Reply, chat, chat_with_tools, parse_json
 from wx.markets import allowed_markets, load_inactive, save_snapshot, tmn_volume, top_by_volume
 from wx.prices import watch
-from wx.replay import History, pick_times, run_replay, sample_times, summary
+from wx.replay import pick_times, run_replay, sample_times, summary
 from wx.rules import MarketRules
-from wx.study import SetupRecord, scan
+from wx.study import SetupRecord, lookup_from, scan
 from wx.study import report as study_report
+from wx.trades import History
 from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
 DATA_DIR = Path("data")
@@ -261,7 +262,7 @@ def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: i
     start, end = newest - days * 86400, newest - 86400
     allowed = ROLES[role].setups
     print("Rebuilding the features at every past hour ...")
-    rows = scan(histories, spreads, fees) if role in ("informed", "agent") or not any_time else []
+    rows = scan(histories, spreads, fees)
     if any_time:
         times = sample_times(start, end, moments, seed)
         kind = "moments"
@@ -280,7 +281,7 @@ def run_replay_cmd(symbols: list[str], settings: Settings, moments: int, days: i
 
     log = DATA_DIR / "replay" / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.jsonl"
     print(f"Replaying {len(times)} {kind} from the last {days} days (seed {seed}), {workers} at a time. Log: {log}")
-    results = run_replay(times, histories, spreads, fees, ask, log, workers, role,
+    results = run_replay(times, histories, spreads, fees, ask, lookup_from(rows), log, workers, role,
                          record.at if role == "informed" else None)
     print(summary(results))
     return 0

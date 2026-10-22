@@ -1,27 +1,30 @@
 """How each buy setup did in the past, without the AI.
 
-Every hour in the saved history, the features are rebuilt as they were then
-(as in `wx replay`). Where a setup is active, we pretend to buy and look at
-the next 24 hours: held to the end, and with a stop-loss. At most one entry
-per market per setup per day, so one move is not counted many times.
+Every hour in the saved history, the features are rebuilt as they were then.
+Where a setup is active, we pretend to buy and play the trade out with
+trade(): the setup's own exit, the stop, the costs. At most one entry per
+market per setup per day, so one move is not counted many times.
 """
 
 from statistics import mean, stdev
 
 from wx.features import HOUR, MIN_HOURS
-from wx.replay import HORIZON, History, outcome
+from wx.replay import STOP_ATR, Lookup
 from wx.setups import SETUPS
+from wx.trades import History, trade
+
+DAY = 24 * HOUR
+NO_STOP = 99.0  # a stop this far below the entry is never hit
 
 
 def scan(histories: dict[str, History], spreads: dict[str, float], fees: dict[str, float]) -> list[dict]:
-    """Features at every hour where 24 hours of later data exist. One row per market and hour."""
+    """Features at every hour where the history allows. One row per market and hour."""
     rows = []
     for symbol, history in histories.items():
         if len(history.hours) <= MIN_HOURS:
             continue
         start = int(history.hours[MIN_HOURS][0]) + HOUR
-        end = int(history.minutes[-1][0]) - HORIZON
-        for t in range(start - start % HOUR, end, HOUR):
+        for t in range(start - start % HOUR, history.end - HOUR, HOUR):
             try:
                 features = history.features_at(t, spreads[symbol], fees.get(symbol))
             except ValueError:
@@ -30,36 +33,46 @@ def scan(histories: dict[str, History], spreads: dict[str, float], fees: dict[st
     return rows
 
 
+def lookup_from(rows: list[dict]) -> Lookup:
+    """lookup(symbol, hour) over the scanned rows."""
+    table = {(r["symbol"], r["t"]): r["features"] for r in rows}
+    return lambda symbol, t: table.get((symbol, t))
+
+
 def entries(rows: list[dict], setup: str | None) -> list[dict]:
     """Rows where the setup is active (any setup if None), at most one per market per day."""
     picked, last = [], {}
     for row in sorted(rows, key=lambda r: (r["symbol"], r["t"])):
         on = row["features"]["setups"] if setup is None else setup in row["features"]["setups"]
-        if on and row["t"] - last.get(row["symbol"], -HORIZON) >= HORIZON:
+        if on and row["t"] - last.get(row["symbol"], -DAY) >= DAY:
             picked.append(row)
             last[row["symbol"]] = row["t"]
     return picked
 
 
-class SetupRecord:
-    """Each setup's past entries, to tell the AI how a setup did, using only data from before a moment.
+def play(row: dict, setup: str, histories: dict[str, History], lookup: Lookup, stop_atr: float = STOP_ATR):
+    """The trade for one entry row, with taker orders."""
+    f = row["features"]
+    return trade(histories[row["symbol"]], setup, row["t"], f, stop_atr * f["atr14_pct"], "taker",
+                 lambda h: lookup(row["symbol"], h))
 
-    An entry counts once its 24 hours are over. Results use the stop (STOP_ATR) and are net of costs.
+
+class SetupRecord:
+    """Each setup's past trades, to tell the AI how a setup did, using only data from before a moment.
+
+    A trade counts once it has closed. Results use the stop (STOP_ATR) and are net of costs.
     """
 
     def __init__(self, rows: list[dict], histories: dict[str, History]):
-        self.results = {
-            name: [(r["t"], outcome(histories[r["symbol"]], r["t"], r["features"])["net_stop_pct"])
-                   for r in entries(rows, name)]
-            for name in SETUPS
-        }
+        lookup = lookup_from(rows)
+        self.results = {name: [play(r, name, histories, lookup) for r in entries(rows, name)] for name in SETUPS}
 
     def at(self, t: int) -> dict:
         record = {}
-        for name, results in self.results.items():
-            nets = [net for start, net in results if start + HORIZON <= t]
+        for name, trades in self.results.items():
+            nets = [x.net_pct for x in trades if x.exit_t <= t]
             record[name] = {
-                "entries": len(nets),
+                "trades": len(nets),
                 "average_net_pct": round(mean(nets), 2) if nets else None,
                 "made_money_pct": round(100 * sum(n > 0 for n in nets) / len(nets)) if nets else None,
             }
@@ -74,24 +87,22 @@ def stats(nets: list[float]) -> str:
 
 
 def report(rows: list[dict], histories: dict[str, History], stops: list[float]) -> str:
-    """Per setup: entries, and average net result held 24 hours and with each stop, by half of the period."""
+    """Per setup: entries, and the average net result with no stop and with each stop, by half of the period."""
     if not rows:
         return "No hours to study."
+    lookup = lookup_from(rows)
     middle = sorted(r["t"] for r in rows)[len(rows) // 2]
-    days = (max(r["t"] for r in rows) - min(r["t"] for r in rows)) / 86400
-    lines = [f"{len(rows)} market-hours over {days:.0f} days. Buy, then sell after 24 hours or at the stop. "
-             f"Net = after the round-trip cost. +/- is one standard error."]
-    for name in [*SETUPS, None]:
+    days = (max(r["t"] for r in rows) - min(r["t"] for r in rows)) / DAY
+    lines = [f"{len(rows)} market-hours over {days:.0f} days. Each entry is played out through its setup's exit. "
+             f"Net = after the round-trip cost (taker). +/- is one standard error."]
+    for name, setup in SETUPS.items():
         picked = entries(rows, name)
-        lines.append(f"{name or 'any setup'}: {len(picked)} entries")
-        for stop in [None, *stops]:
-            results = [(r["t"], outcome(histories[r["symbol"]], r["t"], r["features"], stop)) for r in picked]
-            key = "net_stop_pct" if stop else "net_pct"
-            label = f"stop {stop:g} ATR" if stop else "no stop"
-            first = [o[key] for t, o in results if t < middle]
-            second = [o[key] for t, o in results if t >= middle]
-            lines.append(f"  {label:<11} all {stats([o[key] for _, o in results])}  "
+        lines.append(f"{name}: {len(picked)} entries. Exit: {setup.exit_meaning}.")
+        for stop in [NO_STOP, *stops]:
+            results = [(r["t"], play(r, name, histories, lookup, stop).net_pct) for r in picked]
+            label = "no stop" if stop == NO_STOP else f"stop {stop:g} ATR"
+            first = [n for t, n in results if t < middle]
+            second = [n for t, n in results if t >= middle]
+            lines.append(f"  {label:<11} all {stats([n for _, n in results])}  "
                          f"| 1st half {stats(first)}  | 2nd half {stats(second)}")
-    every = [outcome(histories[r["symbol"]], r["t"], r["features"], None)["net_pct"] for r in rows]
-    lines.append(f"Every hour, no stop, for comparison: {stats(every)}")
     return "\n".join(lines)
