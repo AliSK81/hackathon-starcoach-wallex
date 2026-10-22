@@ -86,6 +86,7 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 
 What this means:
 - The trend rule made money over the last months, on markets it was not chosen on. Much of this comes from the Toman losing value: in these 120 days USDTTMN rose 63% (F24). That may not continue.
+- **This is the main risk.** With the Toman drift taken out (prices in USDT terms), the same rule lost money in the second half on 4 of 5 coins (F36). The bot is, in effect, long coins against the Toman while they trend up. If the Toman holds steady during the contest, expect a result near zero or a small loss. The risk limits keep such a loss small (worst 3-day window in the backtest: about -4%).
 - Over a single 3-day window the result is close to a coin flip. The edge shows in the average, through a few large winners.
 - In the 88-day backtest on our 6 markets, the profit came from 5 of them: ETH 37%, SOL 24%, USDT 19%, BTC 13%, PEPE 6%, XRP about 0. 74 of 93 trades ended by the trend rule, 15 at the stop. The 60% limit on coins was the rule that most often refused a buy.
 - The rule does not hang on its numbers: EMA 10/30 and 50/100 also made money on both market sets (F35).
