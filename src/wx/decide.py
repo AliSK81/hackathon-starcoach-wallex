@@ -103,7 +103,7 @@ AGENT_TEXT = """- You have tools. Before deciding on a candidate, look closer wh
   (get_market, get_hourly_closes), and how the setup did before (get_setup_record).
 """
 ROLES["agent"] = Role(ROLES["veto"].text + AGENT_TEXT, ROLES["veto"].setups, tools=True, checked_veto=True)
-DEFAULT_ROLE = "veto"  # D30
+DEFAULT_ROLE = "agent"  # D31
 
 TAIL = f"""
 Actions:

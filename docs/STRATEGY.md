@@ -43,7 +43,7 @@ Wallex REST API ──> candles + order book ──> features (code, 28 per mark
 - The model is set in `.env` (`LLM_BASE_URL`, `LLM_MODEL`). We use the hackathon gateway (F11).
 - Each cycle with something to decide, the AI gets all features with their meanings, our cash and positions, and the list of vetoes. It answers in JSON: for each market BUY, SELL or HOLD, a confidence, a reason, the features it used, and a veto if it stops a buy.
 - Code checks every answer (D18). Unknown actions, made-up features, a SELL of a coin we don't hold, or a buy through a setup that is not active: all become HOLD, and the problem is logged. The values of the cited features in the log come from our data, not from the AI's text.
-- The AI can call tools (role `agent`, D27): the features of any market, recent hourly prices, and each setup's past record. The tools only see data up to the moment being decided.
+- The AI is an agent (role `agent`, the default, D31). Before it decides, it can call tools: the features of any market, recent hourly prices, and each setup's past record (D27). The tools only see data up to the moment being decided. Every tool call and its result are logged with the decision.
 - If the AI fails, nothing is bought (fail closed).
 - Wallex data comes from the official REST API through our own small client (`wallex.py`). Wallex also offers an MCP server for AI agents. We don't give it to the AI: it has no order limits on the server side (research file 05c), and in this bot the AI never places orders. The AI's tools (`agent.py`) only read our own saved data.
 - The AI's full answer and its reasoning text are logged with every decision.
@@ -82,6 +82,7 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 | 3-day windows, our 6 markets | a fresh book every day, run for 3 days | Up in 49% of windows. Average +0.73%. Worst -4.1%, best +14.7%. (F28) |
 | AI replay | 40 past moments per role | The AI's free choices did not beat the rules (F20, F21, F27). |
 | AI replay, checked veto | the same 40 trend moments | Buys the AI let through: +1.53% each. All trend buys: +1.44%. The 6 it stopped: -0.91%. (F31) |
+| AI replay, agent (checked veto + tools) | the same 40 trend moments | Buys the AI let through: +1.64% each. All trend buys: +1.48%. (F33) |
 
 What this means:
 - The trend rule made money over the last months, on markets it was not chosen on. Much of this comes from the Toman losing value: in these 120 days USDTTMN rose 63% (F24). That may not continue.
@@ -96,7 +97,7 @@ uv run wx candles            # download 120 days of candles (about 15 minutes th
 uv run wx study              # each setup over the history, no AI
 uv run wx backtest           # the portfolio backtest, no AI
 uv run wx replay --role veto # the AI on 40 past moments (needs the AI settings)
-uv run wx run --shadow --role veto   # live shadow trading, every 15 minutes
+uv run wx run --shadow             # live shadow trading, every 15 minutes (role agent)
 uv run wx shadow             # the shadow book
 uv run pytest                # 100+ tests, no internet
 ```
