@@ -184,3 +184,19 @@ def test_a_position_is_sold_before_its_market_closes(ex, tmp_path):
     (tmp_path / "market_closes.json").write_text(js.dumps({"SOLTMN": close}), encoding="utf-8")
     ex.guard(NOW + 180)
     assert p.status in ("selling", "closed") and p.sell_reason == "market closes"
+
+
+def test_the_trend_exit_waits_for_a_real_turn(ex):
+    """A dip bought in a downtrend is not sold at once for that downtrend; once the trend was up, a turn sells."""
+    ex.buy("SOLTMN", "stretched_dip", f(), Verdict(500_000, 6.0, "approved", "ok"), NOW,
+           {"max_hours": 12, "trend_exit": True})
+    p = ex.positions_[0]
+    ex.trader.fill(p.buy_id)
+    down = f(ema20_vs_ema50_pct=-1.3)
+    ex.sync({"SOLTMN": down}, NOW + 60)
+    ex.sync({"SOLTMN": down}, NOW + 900)
+    assert p.status == "open" and not p.trend_up_seen
+    ex.sync({"SOLTMN": f(ema20_vs_ema50_pct=0.4)}, NOW + 1800)
+    assert p.status == "open" and p.trend_up_seen
+    ex.sync({"SOLTMN": down}, NOW + 2700)
+    assert p.status in ("selling", "closed") and p.sell_reason == "plan exit (time or trend)"

@@ -249,7 +249,8 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
         except WallexError as error:
             print(f"Could not read markets: {error}")
             return 1
-        print(f"{len(markets)} allowed TMN markets; {len(liquid(markets))} liquid now (>= 5 B TMN a day).")
+        print(f"{len(markets)} allowed TMN markets; {len(liquid(markets))} with >= 5 bn TMN a day (more join each "
+              f"cycle if their book is deep, D53).")
     else:
         markets = pick_markets(symbols)
         if markets is None:

@@ -59,6 +59,7 @@ class Position:
     max_hours: float = 0.0
     trend_exit: bool = False
     fill_minutes: int = FILL_WINDOW // 60  # how long the buy waits before it is cancelled
+    trend_up_seen: bool = False  # the trend was up at some point while held: only then can it "turn" (trend_exit)
 
     @property
     def stop(self) -> float | None:
@@ -291,11 +292,14 @@ class LiveExecutor:
                 if p.status == "open":
                     f = table.get(p.symbol)
                     hours = (now - (p.entry_t or p.t)) / 3600
+                    if f and (f.get("ema20_vs_ema50_pct") or 0) >= 0:
+                        p.trend_up_seen = True  # a dip bought in a downtrend is not sold for that downtrend
                     if f and p.stop and f["price"] <= p.stop:
                         closed += self.send_sell(p, now, "stop")
                     elif f and p.target_pct and f["price"] >= p.entry * (1 + p.target_pct / 100):
                         closed += self.send_sell(p, now, "target")
-                    elif f and (p.max_hours or p.trend_exit) and exit_rule(p.max_hours, p.trend_exit)(f, hours):
+                    elif f and (p.max_hours or p.trend_exit) and \
+                            exit_rule(p.max_hours, p.trend_exit and p.trend_up_seen)(f, hours):
                         closed += self.send_sell(p, now, "plan exit (time or trend)")
                     elif f and p.setup in SETUPS and not (p.max_hours or p.trend_exit) \
                             and SETUPS[p.setup].exit(f, hours):
