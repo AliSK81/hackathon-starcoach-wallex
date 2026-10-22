@@ -83,6 +83,14 @@ def log_dir(data_dir: Path, name: str) -> Path:
     return data_dir / "live" if name == "live" else data_dir
 
 
+def owner_note(data_dir: Path) -> str:
+    """The owner's instruction to the trader, read every cycle so it can change while the bot runs."""
+    try:
+        return (data_dir / "owner_note.txt").read_text(encoding="utf-8").strip()[:1000]
+    except OSError:
+        return ""
+
+
 def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, executor, end_at: int | None,
                store, officer: bool = True, env=ENVELOPE, universe: bool = False) -> Brain:
     """With universe, the markets are picked again every cycle: every liquid allowed TMN market (universe.py)."""
@@ -135,7 +143,7 @@ def make_brain(markets: dict[str, dict], settings: Settings, data_dir: Path, exe
     return Brain(llm=chat_model(settings, data_dir), executor=executor, features=features,
                  micro=lambda s: microstructure(s, mcp), closes=closes, store=store, log=log, end_at=end_at,
                  env=env, officer=officer, candles=candles, market_list=market_list, market_features=any_market,
-                 market_closes=lambda: market_closes(data_dir))
+                 market_closes=lambda: market_closes(data_dir), owner_note=lambda: owner_note(data_dir))
 
 
 def report(state: dict) -> str:

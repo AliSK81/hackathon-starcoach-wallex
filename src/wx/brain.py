@@ -192,6 +192,7 @@ class Brain:
     market_list: Callable[[], list[dict]] | None = None  # every allowed TMN market with Wallex's 24h stats
     market_features: Callable[[str], dict] | None = None  # features of any allowed market, on demand
     market_closes: Callable[[], dict[str, int]] = dict  # market -> Unix time Wallex closes it (closures.py)
+    owner_note: Callable[[], str] = str  # the owner's current instruction to the trader (data/owner_note.txt)
     halted: bool = False  # set by the runner after repeated failures: no new buys
     clock: Callable[[], float] = time.time
 
@@ -258,6 +259,7 @@ risk_pct 1.5 to 3, up to the envelope's limit in one coin, and take more of the 
 for perfect ones. A buy still needs an edge after costs: aggressive means bigger and more often, not careless.
 The hard limits and the halts after losses stay.
 
+Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
 code refuses the buy and sells what we hold there before the close.
 
@@ -375,6 +377,7 @@ def build_graph(b: Brain, checkpointer=None):
             "buys_last_24h": view["buys_last_24h"],
             "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
                                                else OVERVIEW),
+            "owner_instructions": b.owner_note() or None,
             "markets_closing_utc": {s: time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
                                     for s, t in b.market_closes().items()},
             "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
@@ -469,7 +472,7 @@ def build_graph(b: Brain, checkpointer=None):
                     continue
                 book = ((state.get("micro") or {}).get(d["symbol"]) or {}).get("book") or {}
                 v = size_plan(f, account, d["risk_pct"], d["stop_pct"], b.env, b.executor.ledger(), now,
-                              state["hours_left"], book.get("ask_tmn_within_1pct"))
+                              state["hours_left"], book.get("ask_tmn_within_1pct"), symbol=d["symbol"])
                 d["verdict"] = {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
                 if v.tmn:
                     exits = {k: d[k] for k in ("target_pct", "max_hours", "trend_exit", "order")}
@@ -673,7 +676,7 @@ def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
         account = Account(acc["equity"], acc["cash"], acc["in_coins"], acc["peak"], acc.get("day_start") or 0)
         book = (micro.get(symbol) or {}).get("book") or {}
         v = size_plan(f, account, risk_pct, stop_pct, b.env, b.executor.ledger(), now, state["hours_left"],
-                      book.get("ask_tmn_within_1pct"))
+                      book.get("ask_tmn_within_1pct"), symbol=symbol)
         return {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": v.stop_pct,
                 "pct_of_equity": round(v.tmn / max(acc["equity"], 1) * 100, 1)}
 

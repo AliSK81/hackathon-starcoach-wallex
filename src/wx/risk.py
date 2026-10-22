@@ -230,9 +230,12 @@ def clamp(x, lo: float, hi: float, default: float) -> float:
         return default
 
 
+CASH_LIKE = {"USDTTMN": 0.98}  # the owner treats USDT as cash: this share of equity may be held in it (D51)
+
+
 def size_plan(features: dict, account: Account, risk_pct: float, stop_pct: float, env: Envelope = ENVELOPE,
               ledger: Ledger | None = None, now: int | None = None, hours_left: float | None = None,
-              ask_tmn_1pct: float | None = None) -> Verdict:
+              ask_tmn_1pct: float | None = None, symbol: str = "") -> Verdict:
     """Size the agent's buy: the Toman a stop-out at stop_pct would lose is risk_pct of equity, costs included.
 
     Then the ladder: the smallest of the risk size, the room in one coin, the room in coins, free cash and what the
@@ -257,6 +260,9 @@ def size_plan(features: dict, account: Account, risk_pct: float, stop_pct: float
         "max in coins": env.max_exposure * account.equity - account.exposure,
         "free cash": account.cash,
     }
+    if symbol in CASH_LIKE:  # cash, not a coin: its own cap, outside the coin limits
+        caps["max in one coin"] = CASH_LIKE[symbol] * account.equity
+        del caps["max in coins"]
     if ask_tmn_1pct:
         caps["book depth"] = env.book_share * ask_tmn_1pct
     name, tmn = min(caps.items(), key=lambda kv: kv[1])
