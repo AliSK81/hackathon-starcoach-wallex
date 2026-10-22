@@ -48,9 +48,10 @@ How the bot works:
 
 @dataclass(frozen=True)
 class Role:
-    """What the AI is asked to do, and which setups it may buy through."""
+    """What the AI is asked to do, which setups it may buy through, and whether it gets tools (agent.py)."""
     text: str
     setups: tuple[str, ...]
+    tools: bool = False
 
 
 # The AI's possible roles. `wx replay --role` compares them (DECISIONS D24).
@@ -93,6 +94,11 @@ Buy setups:
 - For a BUY, name the setup. Every other market is HOLD.
 """, ("sharp_drop", "oversold")),
 }
+# The veto role with tools: the AI can look closer before it lets a buy go ahead or stops it.
+ROLES["agent"] = Role(ROLES["veto"].text + """- You have tools. Before deciding on a candidate, look closer where it helps: the shape of
+  its last hours (get_hourly_closes), other markets such as BTCTMN for the whole market
+  (get_market, get_hourly_closes), and how the setup did before (get_setup_record).
+""", ROLES["veto"].setups, tools=True)
 DEFAULT_ROLE = "pick"
 
 TAIL = f"""

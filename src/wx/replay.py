@@ -51,6 +51,11 @@ class History:
         i = bisect.bisect_right(self.minute_starts, t - MINUTE)
         return self.minutes[i - 1][4] if i else None
 
+    def hourly_closes(self, t: int, hours: int) -> list[float]:
+        """Closes of the last `hours` 1-hour candles that ended by t, oldest first."""
+        i = bisect.bisect_right(self.hour_starts, t - HOUR)
+        return [h[4] for h in self.hours[max(0, i - hours) : i]]
+
     def first_below(self, start: int, end: int, price: float) -> int | None:
         """End of the first 1-minute candle in [start, end) that traded below price, or None."""
         first = bisect.bisect_left(self.minute_starts, start)
@@ -110,8 +115,12 @@ def pick_times(candidates: list[int], count: int, seed: int) -> list[int]:
     return sorted(random.Random(seed).sample(candidates, min(count, len(candidates))))
 
 
+# ask(messages, t, table) asks the AI about the moment t, whose features are table.
+Ask = Callable[[list[dict], int, dict], Reply]
+
+
 def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, float],
-                  fees: dict[str, float], ask: Callable[[list[dict]], Reply], role: str = DEFAULT_ROLE,
+                  fees: dict[str, float], ask: Ask, role: str = DEFAULT_ROLE,
                   setup_history: Callable[[int], dict] | None = None) -> dict:
     """One past moment: features, the checked AI decision, and what happened in the next 24 hours.
 
@@ -124,7 +133,7 @@ def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, floa
         except ValueError as error:
             feature_errors[symbol] = str(error)
     known = setup_history(t) if setup_history else None
-    record = (decide(table, CASH_TMN, {}, ask, role, known) if table
+    record = (decide(table, CASH_TMN, {}, lambda messages: ask(messages, t, table), role, known) if table
               else {"driver": "none", "role": role, "decisions": []})
     outcomes = {symbol: outcome(histories[symbol], t, features) for symbol, features in table.items()}
     moment = datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="minutes")
@@ -132,7 +141,7 @@ def replay_moment(t: int, histories: dict[str, History], spreads: dict[str, floa
 
 
 def run_replay(times: list[int], histories: dict[str, History], spreads: dict[str, float],
-               fees: dict[str, float], ask: Callable[[list[dict]], Reply], log: Path, workers: int = 4,
+               fees: dict[str, float], ask: Ask, log: Path, workers: int = 4,
                role: str = DEFAULT_ROLE, setup_history: Callable[[int], dict] | None = None) -> list[dict]:
     """Replay every moment, a few at a time. Each result is logged as soon as it is ready."""
     log.parent.mkdir(parents=True, exist_ok=True)

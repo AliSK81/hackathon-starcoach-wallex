@@ -56,7 +56,7 @@ def test_moments_are_on_the_beat_repeatable_and_inside_the_window():
     assert pick_times([5, 1, 3], 9, seed=7) == [1, 3, 5]
 
 
-def buy_reply(messages):
+def buy_reply(messages, *moment):
     answer = {"market_view": "v", "decisions": [
         {"symbol": "BTCTMN", "action": "BUY", "confidence": 0.7, "setup": "sharp_drop", "reason": "r",
          "cited": ["ret_24h_pct"]}]}
@@ -74,7 +74,7 @@ def test_moment_records_what_happened_next():
 def test_replay_logs_each_moment_and_survives_ai_failures(tmp_path):
     calls = []
 
-    def flaky(messages):
+    def flaky(messages, *moment):
         calls.append(1)
         if len(calls) == 2:
             raise LLMError("chat failed: timed out")
@@ -115,7 +115,7 @@ def test_setup_record_only_counts_entries_that_are_over():
 def test_informed_role_sends_the_setup_record_to_the_ai():
     seen = {}
 
-    def ask(messages):
+    def ask(messages, *moment):
         seen["facts"] = json.loads(messages[1]["content"])
         seen["system"] = messages[0]["content"]
         return buy_reply(messages)
