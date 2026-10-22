@@ -695,3 +695,26 @@ Not done yet:
 
 Next change idea:
 - Go live with the agent, or decide first how much Toman drift to bet on.
+
+### Change 25 — the agent chooses its risk mode by the time left — 2026-10-22
+Phase: 2 and 3 (the AI and the risk check)
+How to see it: `uv run python scripts/test_risk_modes.py`, `uv run python scripts/how_big_12h.py`, `uv run wx agent --shadow`
+Proof it works:
+- Four risk modes, each tested on 12-hour, 1-day, 3-day windows and the whole history, on three market sets (F53).
+- A 20% gain in 12 hours has no support in the data (F52).
+- The agent picks a mode each cycle with a tool and a skill. Code caps it after losses. Tests cover the choice, the cap and a bad answer.
+- `uv run pytest` passed 156 tests.
+
+Research: research files 01, 02 and 08: how NoFx, Vibe-Trading, Alpha Arena and TradingAgents let the AI size trades.
+Questions: the user asked for rules that follow the trading time and are decided by the agent, not fixed in code.
+Decisions: D41. Facts F52 to F54.
+
+Shipped:
+- `risk.py`: `RISK_MODES`, `mode_cap`. `brain.py`: the mode in the plan, `get_risk_modes`, candidates tagged with the modes that trade them. `skills/risk-modes.md`.
+
+Not done yet:
+- The AI gateway was down when this shipped (F54), so the mode choice has not run with the real model yet.
+- A Wallex key that can trade.
+
+Next change idea:
+- Check the agent's first real mode choices when the gateway is back. Then go live.

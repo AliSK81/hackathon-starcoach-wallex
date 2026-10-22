@@ -125,6 +125,25 @@ A candidate is a market we don't hold where one of these setups is active ([setu
 - **Markets:** BTCTMN, ETHTMN, SOLTMN, XRPTMN, PEPETMN, USDTTMN. All allowed (D3), liquid, narrow spreads (F40).
   We stay in TMN markets. Moving to USDT pairs costs more than it saves over 12 hours (F42, D34).
 
+## Risk modes: the agent decides how hard to trade
+
+Every cycle the analyst chooses a risk mode, and says why (D41). It reads the skill `risk-modes` and calls
+`get_risk_modes`, which gives each mode's limits and its past results over 12 hours, 1 day, 3 days and 89 days.
+It weighs the hours left, our result so far, the drawdown and the market.
+
+| Mode | Trades | Risk a trade | Max one coin / in coins | 12 h avg (up) | 3 days avg | 89 days |
+|---|---|---|---|---|---|---|
+| defensive | 12-hour setups where the move beats 1.5x the cost | 0.75% | 25% / 60% | -0.04% (14%) | -0.03% | +3.0% |
+| normal | 12-hour setups | 0.75% | 25% / 60% | -0.07% (23%) | +0.14% | +15.1% |
+| active | 12-hour setups and the 1h trend rule | 0.75% | 25% / 60% | -0.12% (33%) | +0.47% | +24.5% |
+| aggressive | all, full size | 1.5% | 35% / 80% | -0.20% (36%) | +0.73% | +42.5% (drawdown 15%) |
+
+Code keeps the outer limits in every mode: a stop on every buy, the caps, never all-in, no new buys near the end,
+everything sold before the end. After 4% below the peak or 1.5% down in a day, code allows at most `normal`.
+
+A 20% gain in 12 hours is not in the data: even buying the exact low and selling the exact high of one coin
+reached 20% in under 1% of 12-hour windows (F52).
+
 ## Risk and capital management
 
 All in `risk.py` and `live.py`, normal code. The AI can't skip it.

@@ -53,8 +53,20 @@ from langgraph.store.sqlite import SqliteStore
 
 from wx.features import FEATURES
 from wx.llm import LLMError, parse_json
-from wx.risk import AGENT_LIMITS, Account, Limits, check_buy, edge_problem
-from wx.setups import SETUPS, SHORT_SETUPS
+from wx.risk import (
+    AGENT_LIMITS,
+    DEFAULT_MODE,
+    MODE_ORDER,
+    RISK_MODES,
+    WIDE_SETUPS,
+    Account,
+    Limits,
+    capped,
+    check_buy,
+    edge_problem,
+    mode_cap,
+)
+from wx.setups import SETUPS
 from wx.veto import VETOES
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
@@ -75,6 +87,20 @@ RECORD_12H = {
     "dip_toman_weak": {"entries": 189, "avg_net_pct": 0.31, "win_pct": 54, "first_half": 0.32, "second_half": 0.31},
     "trend_strong": {"entries": 5166, "avg_net_pct": 0.31, "win_pct": 45, "first_half": 0.78, "second_half": -0.51},
     "every_hour_any_market": {"entries": 37980, "avg_net_pct": -0.26, "win_pct": 38},
+}
+
+# Past results of each risk mode on our 6 markets, limit orders, sold into Toman at the end of each window (F53).
+# avg and worst are % of the account; up is the share of windows that ended up. `scripts/test_risk_modes.py`.
+MODE_RECORD = {
+    "defensive": {"12h": "avg -0.04, up 14%, worst -1.4, best +2.1", "1d": "avg -0.04, up 25%, worst -1.4",
+                  "3d": "avg -0.03, up 48%, worst -1.9, best +2.6", "89d": "+3.0%, drawdown 4.6%"},
+    "normal": {"12h": "avg -0.07, up 23%, worst -2.3, best +2.2", "1d": "avg -0.04, up 35%, worst -2.5",
+               "3d": "avg +0.14, up 45%, worst -2.8, best +10.7", "89d": "+15.1%, drawdown 6.0%"},
+    "active": {"12h": "avg -0.12, up 33%, worst -2.8, best +3.0", "1d": "avg +0.01, up 42%, worst -3.9",
+               "3d": "avg +0.47, up 41%, worst -4.6, best +16.8", "89d": "+24.5%, drawdown 8.8%"},
+    "aggressive": {"12h": "avg -0.20, up 36%, worst -4.2, best +4.5", "1d": "avg -0.03, up 43%, worst -6.4",
+                   "3d": "avg +0.73, up 46%, worst -6.8, best +19.0", "89d": "+42.5%, drawdown 15.4%",
+                   "without_toman_drift_89d": "-5.4%"},
 }
 
 EXITS = {
@@ -110,6 +136,8 @@ class State(TypedDict, total=False):
     bear: dict
     theses: dict
     fail_streak: int  # failed analyst cycles in a row (kept between cycles)
+    risk_mode: str  # the mode in force (kept between cycles)
+    mode_cap: str  # the most aggressive mode code allows now
     token_day: int  # the UTC day of tokens_today
     tokens_today: int
     recent: Annotated[list, operator.add]  # short-term memory: one line per cycle, kept by the checkpointer
@@ -159,10 +187,13 @@ def read_skill_text(name: str) -> str:
 ANALYST = """You are the analyst of a trading bot on the Wallex exchange in Iran. Spot only, long only.
 Markets are quoted in Toman (TMN). The result is counted in Toman when trading ends.
 
-Code found the candidates below: markets where one of our 12-hour setups is active now. Code will BUY
-every candidate unless you stop it with a checked veto. You also review each position we hold.
+Code found the candidates below: markets where one of our setups is active now. Each candidate lists the risk
+modes that trade it. You choose the risk mode for this cycle. Code will BUY every candidate your mode trades,
+unless you stop it with a checked veto. You also review each position we hold.
 
 Work like a careful trader:
+0. Choose the risk mode. Read the skill risk-modes, call get_risk_modes and get_portfolio. Weigh the hours left,
+   our result so far, the market, and what each mode did in the past over that horizon. Explain your choice.
 1. Read the skill trader-core first. Read other skills when a candidate needs them.
 2. For each candidate, check its setup record, the shape of its last hours, and its order book and trade
    flow (get_orderbook reads the Wallex MCP server). Check the whole market (BTCTMN, the Toman).
@@ -183,6 +214,8 @@ Reply with one JSON object and nothing else, in exactly this format:
 {format}"""
 
 FORMAT = """{
+  "risk_mode": "defensive" | "normal" | "active" | "aggressive",
+  "mode_reason": "<why this mode now, at most 300 characters>",
   "market_view": "<the overall picture, at most 300 characters>",
   "candidates": [{"symbol": "...", "setup": "...", "decision": "TAKE" | "SKIP", "veto": "<only for SKIP>",
                   "conviction": <0 to 1>, "reason": "<at most 300 characters>", "cited": ["<feature names>"],
@@ -227,15 +260,16 @@ def build_graph(b: Brain, checkpointer=None):
             account = b.executor.account(table, now)
             positions = b.executor.positions(table, now)
             held = b.executor.held()
-        candidates = [
-            {"symbol": s, "setup": name, "grade": SETUPS[name].grade, "meaning": SETUPS[name].meaning}
-            for s, f in table.items() if s not in held
-            for name in [next((n for n in f.get("setups", []) if n in SHORT_SETUPS), None)] if name
-        ]
-        too_small = [c for c in candidates if edge_problem(table[c["symbol"]], b.limits)]
-        problems += [f"{c['symbol']} {c['setup']} not a candidate: {edge_problem(table[c['symbol']], b.limits)}"
-                     for c in too_small]
-        candidates = [c for c in candidates if c not in too_small]  # the risk check would refuse them anyway
+        candidates = []
+        for s, f in table.items():
+            name = next((n for n in WIDE_SETUPS if n in f.get("setups", [])), None)  # 12-hour setups first
+            if s in held or name is None:
+                continue
+            modes = [m for m, mode in RISK_MODES.items()
+                     if name in mode.setups and not edge_problem(f, mode.limits)]
+            if modes:
+                candidates.append({"symbol": s, "setup": name, "grade": SETUPS[name].grade,
+                                   "meaning": SETUPS[name].meaning, "modes": modes})
         micro = {}
         for c in candidates:  # the gate needs the live book to check a sell_pressure veto
             micro[c["symbol"]] = m = b.micro(c["symbol"])
@@ -245,7 +279,9 @@ def build_graph(b: Brain, checkpointer=None):
         day = now // 86400
         tokens = state.get("tokens_today", 0) if state.get("token_day") == day else 0
         theses = {s: (b.store.get(("theses",), s) or _Empty).value for s in positions}
+        cap = mode_cap(account.equity, account.peak, account.day_start)
         return {"cycle": state.get("cycle", 0) + 1, "now": now, "hours_left": hours_left, "table": table,
+                "mode_cap": cap, "risk_mode": capped(state.get("risk_mode") or DEFAULT_MODE, cap),
                 "token_day": day, "tokens_today": tokens, "bull": {}, "bear": {},
                 "theses": {s: t for s, t in theses.items() if t},
                 "micro": micro, "candidates": candidates, "positions": positions, "closed": [],
@@ -289,6 +325,7 @@ def build_graph(b: Brain, checkpointer=None):
         prompt = ANALYST.format(rounds=MAX_TOOL_ROUNDS, skills=json.dumps(skills_index()), format=FORMAT)
         facts = {
             "hours_left": state["hours_left"], "account_tmn": state["account"], "positions": state["positions"],
+            "risk_mode_now": state.get("risk_mode"), "most_aggressive_mode_allowed": state.get("mode_cap"),
             "candidates": state["candidates"],
             "markets": {s: {k: f.get(k) for k in OVERVIEW} for s, f in table.items()},
             "vetoes": {k: v[0] for k, v in VETOES.items()}, "exit_reasons": EXITS,
@@ -324,7 +361,8 @@ def build_graph(b: Brain, checkpointer=None):
         takes = [c for c in state["plan"].get("candidates", []) if c.get("decision") == "TAKE"]
         if not b.officer or not takes or lean(state):
             return {"review": {}}
-        facts = {"hours_left": state["hours_left"], "takes": takes,
+        facts = {"hours_left": state["hours_left"], "takes": takes, "risk_mode": state["plan"].get("risk_mode"),
+                 "mode_reason": state["plan"].get("mode_reason"),
                  "markets": {c["symbol"]: state["table"].get(c["symbol"]) for c in takes if c.get("symbol") in
                              state["table"]},
                  "books": {s: state["micro"].get(s) for s in (c.get("symbol") for c in takes)},
@@ -338,8 +376,8 @@ def build_graph(b: Brain, checkpointer=None):
             return {"review": {"error": f"{type(e).__name__}: {e}"[:300]}}
 
     def gate(state: State) -> State:
-        decisions, problems = check_plan(state, b.limits)
-        return {"decisions": decisions, "problems": state["problems"] + problems}
+        decisions, problems, mode = check_plan(state)
+        return {"decisions": decisions, "problems": state["problems"] + problems, "risk_mode": mode}
 
     def act(state: State) -> State:
         table, now, orders = state["table"], state["now"], []
@@ -359,7 +397,8 @@ def build_graph(b: Brain, checkpointer=None):
                 if b.halted:
                     d["verdict"] = {"tmn": 0, "rule": "halted", "reason": "rejected: halted after repeated failures"}
                     continue
-                v = check_buy(f, account, 0.0, b.limits, d["scale"], state["hours_left"], b.executor.ledger(), now,
+                limits = RISK_MODES[state.get("risk_mode") or DEFAULT_MODE].limits
+                v = check_buy(f, account, 0.0, limits, d["scale"], state["hours_left"], b.executor.ledger(), now,
                               d["symbol"])
                 d["verdict"] = {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
                 if v.tmn:
@@ -404,7 +443,7 @@ def build_graph(b: Brain, checkpointer=None):
         record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "candidates",
                                              "micro", "plan", "review", "decisions", "orders", "closed",
                                              "lessons", "ai", "problems", "bull", "bear", "theses",
-                                             "fail_streak", "tokens_today")}
+                                             "fail_streak", "tokens_today", "risk_mode", "mode_cap")}
         record.update(decided_at=state.get("now"), role="brain", markets=state.get("table"),
                       executor=b.executor.kind)
         b.log(record)
@@ -487,24 +526,39 @@ def analyst_tools(b: Brain, state: State) -> list:
         return {"account": acc, "positions": state["positions"], "hours_left": state["hours_left"],
                 "drawdown_pct": round((1 - (acc.get("equity") or 0) / peak) * 100, 2),
                 "buys_last_24h": sum(now - t < 86400 for t, _ in ledger.entries), "losses_in_a_row": ledger.streak(),
-                "limits": {k: v for k, v in vars(b.limits).items()}}
+                "risk_mode_now": state.get("risk_mode"), "most_aggressive_mode_allowed": state.get("mode_cap")}
 
     @tool
-    def check_order(symbol: str, conviction: float = 0.5) -> dict:
-        """What the risk check would do with a buy of this candidate now: size in Toman, or why it refuses.
-        Nothing is ordered."""
+    def get_risk_modes() -> dict:
+        """The risk modes you can choose: what each trades, its limits, and how it did in the past over 12 hours,
+        1 day, 3 days and 89 days (F53). Also the most aggressive mode code allows now."""
+        return {"modes": {m: {"meaning": mode.meaning, "setups": list(mode.setups),
+                              "risk_per_trade_pct": mode.limits.risk_per_trade * 100,
+                              "max_in_one_coin_pct": mode.limits.max_position * 100,
+                              "max_in_coins_pct": mode.limits.max_exposure * 100,
+                              "past_results": MODE_RECORD.get(m)} for m, mode in RISK_MODES.items()},
+                "most_aggressive_allowed_now": state.get("mode_cap"), "hours_left": state["hours_left"]}
+
+    @tool
+    def check_order(symbol: str, conviction: float = 0.5, risk_mode: str = "normal") -> dict:
+        """What the risk check would do with a buy of this candidate now in a risk mode: size in Toman, or why it
+        refuses. Nothing is ordered."""
         c = next((c for c in state["candidates"] if c["symbol"] == symbol), None)
         if c is None:
             return {"error": f"{symbol} is not a candidate"}
-        scale = (1.0 if c["grade"] == "A" else b.limits.grade_b_scale) * (0.5 + 0.5 * min(max(conviction, 0), 1))
+        mode = RISK_MODES.get(capped(risk_mode if risk_mode in RISK_MODES else DEFAULT_MODE, state["mode_cap"]))
+        if c["setup"] not in mode.setups:
+            return {"tmn": 0, "reason": f"{c['setup']} is not traded in this mode"}
+        grade = 1.0 if c["grade"] == "A" or not mode.graded else mode.limits.grade_b_scale
+        scale = grade * (0.5 + 0.5 * min(max(conviction, 0), 1))
         acc = state["account"]
         account = Account(acc["equity"], acc["cash"], acc["in_coins"], acc["peak"], acc["equity"])
-        v = check_buy(table[symbol], account, 0.0, b.limits, scale, state["hours_left"], b.executor.ledger(), now,
+        v = check_buy(table[symbol], account, 0.0, mode.limits, scale, state["hours_left"], b.executor.ledger(), now,
                       symbol)
         return {"tmn": v.tmn, "rule": v.rule, "reason": v.reason, "stop_pct": round(v.stop_pct, 2)}
 
-    return [get_market, get_hourly_closes, get_candles, get_orderbook, get_setup_record, get_portfolio, check_order,
-            recall_lessons, read_skill]
+    return [get_risk_modes, get_market, get_hourly_closes, get_candles, get_orderbook, get_setup_record,
+            get_portfolio, check_order, recall_lessons, read_skill]
 
 
 def recall(store, filter_: dict | None, limit: int) -> list:
@@ -514,12 +568,21 @@ def recall(store, filter_: dict | None, limit: int) -> list:
     return [{k: i.value.get(k) for k in ("symbol", "setup", "net_pct", "lesson")} for i in items]
 
 
-def check_plan(state: State, limits: Limits) -> tuple[list[dict], list[str]]:
-    """Turn the AI's plan into checked decisions. Code has the last word on every claim."""
+def check_plan(state: State) -> tuple[list[dict], list[str], str]:
+    """Turn the AI's plan into checked decisions and the risk mode. Code has the last word on every claim."""
     table, plan, problems = state["table"], state.get("plan") or {}, []
+    previous, cap = state.get("risk_mode") or DEFAULT_MODE, state.get("mode_cap") or MODE_ORDER[-1]
     if not plan:  # the AI failed: fail closed, no new buys. Held positions keep their code exits.
         problems.append("no plan from the AI, so no new buys: " + str((state.get("ai") or {}).get("error")))
-        return [], problems
+        return [], problems, previous
+    asked = plan.get("risk_mode")
+    if asked not in RISK_MODES:
+        problems.append(f"risk mode {asked!r} unknown: keeping {previous}")
+        asked = previous
+    mode_name = capped(asked, cap)
+    if mode_name != asked:
+        problems.append(f"risk mode {asked} capped to {mode_name} after losses")
+    mode = RISK_MODES[mode_name]
     officer = {r.get("symbol"): r for r in (state.get("review") or {}).get("reviews", []) if isinstance(r, dict)}
     said = {c.get("symbol"): c for c in plan.get("candidates", []) if isinstance(c, dict)}
     decisions = []
@@ -531,6 +594,10 @@ def check_plan(state: State, limits: Limits) -> tuple[list[dict], list[str]]:
         d = {"symbol": s, "setup": c["setup"], "grade": c["grade"], "ai_decision": a.get("decision"),
              "conviction": conviction, "reason": str(a.get("reason", ""))[:400], "cited": a.get("cited", []),
              "invalidation": str(a.get("invalidation", ""))[:300], "problems": []}
+        if c["setup"] not in mode.setups or mode_name not in c.get("modes", MODE_ORDER):
+            decisions.append({**d, "action": "HOLD", "veto": "", "scale": 0.0,
+                              "problems": [f"not traded in risk mode {mode_name}"]})
+            continue
         if not a:
             d["problems"].append("the AI said nothing about this candidate: the buy goes ahead")
         veto = a.get("veto") or ""
@@ -540,7 +607,8 @@ def check_plan(state: State, limits: Limits) -> tuple[list[dict], list[str]]:
                 continue
             d["problems"].append(f"veto {veto!r} overruled: the data does not support it" if veto
                                  else "SKIP without a veto: the buy goes ahead")
-        scale = (1.0 if c["grade"] == "A" else limits.grade_b_scale) * (0.5 + 0.5 * conviction)
+        grade = 1.0 if c["grade"] == "A" or not mode.graded else mode.limits.grade_b_scale
+        scale = grade * (0.5 + 0.5 * conviction)
         if (officer.get(s) or {}).get("verdict") == "REDUCE":
             scale *= OFFICER_CUT
             d["officer"] = officer[s].get("reason", "")
@@ -559,7 +627,7 @@ def check_plan(state: State, limits: Limits) -> tuple[list[dict], list[str]]:
             decisions.append({"symbol": s, "action": "SELL", "reason": f"{reason}: {p.get('reason', '')}"[:300]})
         else:
             problems.append(f"EXIT {s} with {reason!r} overruled: the data does not support it")
-    return decisions, problems
+    return decisions, problems, mode_name
 
 
 def exit_supported(reason: str, pos: dict, f: dict, table: dict) -> bool:
@@ -636,7 +704,8 @@ def cycle_summary(state: State) -> str:
             for d in state.get("decisions", []) if d.get("action") in ("BUY", "SELL", "HOLD")]
     view = (state.get("plan") or {}).get("market_view", "")
     eq = (state.get("account") or {}).get("equity")
-    return f"{t} UTC equity {eq}: {', '.join(acts) or 'no action'}. {view}"[:400]
+    mode = state.get("risk_mode")
+    return f"{t} UTC equity {eq}, mode {mode}: {', '.join(acts) or 'no action'}. {view}"[:400]
 
 
 def open_memory(data_dir: Path, name: str):

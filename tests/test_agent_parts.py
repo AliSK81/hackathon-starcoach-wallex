@@ -6,10 +6,10 @@ from langchain_core.outputs import ChatGeneration
 from langgraph.store.memory import InMemoryStore
 
 from test_brain import NOW, FakeExecutor, brain, market, plan
-from wx.brain import build_graph, recall
+from wx.brain import build_graph, check_plan, recall
 from wx.decide import log_decision, verify_chain
 from wx.llm_cache import SQLiteLLMCache
-from wx.risk import Account, Ledger, Limits, check_buy
+from wx.risk import RISK_MODES, Account, Ledger, Limits, check_buy, mode_cap
 from wx.trades import History, trade
 from wx.wallex_mcp import book_summary, candle_bars, walk
 
@@ -136,3 +136,28 @@ def test_agent_replay_summary_compares_ai_buys_with_all_candidates():
         {"symbol": "C", "ai": "BUY", "tmn": 0, "net_pct": None, "conviction": 0.5, "officer": ""}]}
     text = summary([rec])
     assert "every candidate (rules only): +0.50% (2)" in text and "bought by the agent:          +2.00% (1)" in text
+
+
+def mode_state(mode, cap="aggressive", setup="trend", grade="B"):
+    return {"table": {"SOLTMN": market(setups=[setup])}, "risk_mode": "normal", "mode_cap": cap, "positions": {},
+            "candidates": [{"symbol": "SOLTMN", "setup": setup, "grade": grade,
+                            "modes": ["active", "aggressive"] if setup == "trend" else list(RISK_MODES)}],
+            "plan": {"risk_mode": mode, "candidates": [{"symbol": "SOLTMN", "decision": "TAKE", "conviction": 1.0}]}}
+
+
+def test_the_agent_chooses_the_mode_and_the_mode_decides_what_is_traded():
+    d, _, mode = check_plan(mode_state("aggressive"))
+    assert mode == "aggressive" and d[0]["action"] == "BUY" and d[0]["scale"] == 1.0  # ungraded in aggressive
+    d, _, mode = check_plan(mode_state("active"))
+    assert mode == "active" and d[0]["scale"] == 0.5  # grade B halves the risk
+    d, _, mode = check_plan(mode_state("defensive"))
+    assert d[0]["action"] == "HOLD" and "not traded in risk mode defensive" in d[0]["problems"][0]
+
+
+def test_code_caps_the_mode_after_losses_and_keeps_it_on_a_bad_answer():
+    assert mode_cap(4_700_000, 5_000_000, 4_800_000) == "normal"  # 6% below the peak
+    assert mode_cap(5_000_000, 5_000_000, 5_000_000) == "aggressive"
+    d, problems, mode = check_plan(mode_state("aggressive", cap="normal"))
+    assert mode == "normal" and d[0]["action"] == "HOLD" and "capped" in problems[0]
+    _, problems, mode = check_plan(mode_state("reckless"))
+    assert mode == "normal" and "unknown" in problems[0]

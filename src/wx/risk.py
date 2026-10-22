@@ -5,7 +5,9 @@ or rejects it. The AI can never skip it. Limits come from DECISIONS D6.
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+
+from wx.setups import SHORT_SETUPS
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,43 @@ class Limits:
 # window on both market sets and in both halves (F48). Take-profit, the soft drawdown, cooldowns and
 # losing-streak pauses did not help on both sets, so they stay off. `wx backtest` without --hours keeps Limits().
 AGENT_LIMITS = Limits(cost_in_size=True, min_edge=1.5, max_trades_day=12)
+
+
+@dataclass(frozen=True)
+class Mode:
+    """A risk mode the agent can choose each cycle (D41): which setups it trades and the limits code applies."""
+    meaning: str
+    setups: tuple[str, ...]
+    graded: bool  # grade B setups risk half as much
+    limits: Limits
+
+
+WIDE_SETUPS = SHORT_SETUPS + ("trend",)
+_BASE = replace(Limits(), cost_in_size=True, max_trades_day=24)
+RISK_MODES = {
+    "defensive": Mode("12-hour setups, only where the usual move is 1.5x the cost; fewest trades, smallest losses",
+                      SHORT_SETUPS, True, AGENT_LIMITS),
+    "normal": Mode("12-hour setups wherever they fire; 0.75% risk a trade", SHORT_SETUPS, True, _BASE),
+    "active": Mode("12-hour setups plus the plain 1h trend rule; more trades", WIDE_SETUPS, True, _BASE),
+    "aggressive": Mode("all setups at full size, 1.5% risk a trade, up to 35% in one coin and 80% in coins",
+                       WIDE_SETUPS, False, replace(_BASE, max_trades_day=48, risk_per_trade=0.015, max_position=0.35,
+                                                   max_exposure=0.80)),
+}
+MODE_ORDER = list(RISK_MODES)
+DEFAULT_MODE = "normal"
+CAP_DRAWDOWN = 0.04  # 4% below the peak: code allows at most "normal"
+CAP_DAY_LOSS = 0.015  # or 1.5% down today
+
+
+def mode_cap(equity: float, peak: float, day_start: float) -> str:
+    """The most aggressive mode code allows now. After losses the agent can't press harder."""
+    if equity < peak * (1 - CAP_DRAWDOWN) or equity < day_start * (1 - CAP_DAY_LOSS):
+        return "normal"
+    return MODE_ORDER[-1]
+
+
+def capped(mode: str, cap: str) -> str:
+    return MODE_ORDER[min(MODE_ORDER.index(mode), MODE_ORDER.index(cap))]
 
 
 @dataclass(frozen=True)

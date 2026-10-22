@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from wx.brain import Brain, build_graph, check_plan, skills_index
-from wx.risk import Account, Ledger, Limits
+from wx.risk import Account, Ledger
 
 NOW = 2_000_000_000
 
@@ -91,7 +91,7 @@ def test_a_take_is_sized_by_code_and_bought():
     b, logs = brain([plan()], {"SOLTMN": market()})
     state = build_graph(b).invoke({})
     [d] = state["decisions"]
-    assert d["action"] == "BUY" and d["setup"] == "stretched_dip" and d["scale"] == 0.8  # grade A, conviction 0.6
+    assert d["action"] == "BUY" and d["setup"] == "capitulation" and d["scale"] == 0.8  # grade A, conviction 0.6
     assert b.executor.bought and b.executor.bought[0][0] == "SOLTMN"
     assert logs and logs[0]["role"] == "brain" and logs[0]["plan"]["market_view"] == "calm"
 
@@ -144,8 +144,8 @@ def test_an_exit_the_data_does_not_support_is_overruled():
     state = {"table": {"ETHTMN": market()}, "candidates": [], "plan": {"positions": [
         {"symbol": "ETHTMN", "decision": "EXIT", "exit_reason": "take_profit"}]},
         "positions": {"ETHTMN": {"setup": "stretched_dip", "entry": 99.0, "pnl_pct": 0.5, "hours_held": 1}}}
-    decisions, problems = check_plan(state, Limits())
-    assert decisions == [] and "overruled" in problems[0]
+    decisions, problems, mode = check_plan(state)
+    assert decisions == [] and "overruled" in problems[-1] and mode == "normal"
 
 
 def test_short_term_memory_carries_over_between_cycles():
