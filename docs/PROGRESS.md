@@ -564,3 +564,27 @@ Not done yet:
 
 Next change idea:
 - Save the agent replay in `results/`. Let the shadow book run until positions close, then check that shadow and backtest agree.
+
+### Change 20 — robustness checks: other EMA pairs work, but the edge leans on the Toman drift — 2026-10-22
+Phase: 6 (tests on the past)
+How to see it: `uv run wx backtest BTCUSDT ETHUSDT SOLUSDT XRPUSDT PEPEUSDT DOGEUSDT`, and the facts below
+Proof it works:
+- Other EMA pairs (10/30, 50/100) also made money on both market sets (F35). The rule does not hang on its numbers.
+- With the Toman drift removed (coins priced in USDT terms), the same rule made money in the 1st half but lost in the 2nd half on 4 of 5 coins (F36). Wallex's own USDT markets gave a similar answer, but they are much thinner.
+- The agent replay with saved tool calls is in `results/` (F33). The live agent uses about 2 million tokens a day (F34).
+
+Research: research file 06 warned that the USDTTMN drift may not last. This confirms it is the main risk.
+Questions: for the team, when back: see "Not done yet".
+Decisions: none new. Facts F33 to F36.
+
+Shipped:
+- Candles for 6 USDT markets, for the drift test.
+- STRATEGY.md now says plainly that the result depends on the Toman.
+- README rewritten in sections.
+
+Not done yet:
+- A team call: the strategy is, in effect, long coins against the Toman while they trend up. That worked in the last 120 days because the Toman fell. Is that the bet we want for the contest? The risk limits keep a 3-day loss near -4% in the backtest.
+- The live shadow book has 3 open positions, slightly down overnight. None has closed yet.
+
+Next change idea:
+- Keep the shadow book running. When a position closes, compare it with the backtest's trade() on the same candles.
