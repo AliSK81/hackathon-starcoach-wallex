@@ -114,6 +114,7 @@ uvx ruff check src tests
 
 ## Docs
 
+- [Strategy](docs/STRATEGY.md): how the bot trades, the AI's role, risk, results. Start here.
 - [Roadmap](docs/ROADMAP.md): the phases.
 - [Progress](docs/PROGRESS.md): what we did.
 - [Decisions](docs/DECISIONS.md): what we decided, and facts we checked.
