@@ -79,6 +79,12 @@ uv run wx shadow
 This shows the shadow book: cash, orders waiting or open, and closed trades with their results.
 
 ```bash
+uv run wx tradelog > results/trade_log.md
+```
+
+This writes the per-trade decision log: for each shadow order, when it was placed, the setup, the risk check's verdict, the AI's confidence and reason, and how it ended.
+
+```bash
 uv run wx replay
 ```
 

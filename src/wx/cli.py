@@ -26,6 +26,8 @@ from wx.shadow import Book
 from wx.shadow import report as shadow_report
 from wx.study import SetupRecord, lookup_from, scan
 from wx.study import report as study_report
+from wx.tradelog import table as trade_table
+from wx.tradelog import trades
 from wx.trades import History, typical_spreads
 from wx.wallex import WallexError, fetch_balances, fetch_fees, fetch_markets
 
@@ -364,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     command("account", "read balances and fees (needs WALLEX_API_KEY)", symbols=False)
     command("ai", "check the AI settings with one small call", symbols=False)
     command("shadow", "show the shadow book: cash, open orders, closed trades", symbols=False)
+    command("tradelog", "the per-trade decision log of the shadow book, as a Markdown table", symbols=False)
     command("rules", "show decimals and minimum order size per market")
     command("features", "indicators per market, from candles and the live book")
     command("backtest", "trade 5,000,000 TMN over the saved history, rules only")
@@ -400,6 +403,7 @@ def main(argv: list[str] | None = None) -> int:
         "account": lambda: run_account(Settings.load()),
         "ai": lambda: run_ai(Settings.load()),
         "shadow": lambda: run_shadow_report(),
+        "tradelog": lambda: print(trade_table(trades(DATA_DIR))) or 0,
         "rules": lambda: run_rules(a.symbols),
         "features": lambda: run_features(a.symbols, Settings.load()),
         "backtest": lambda: run_backtest(a.symbols, Settings.load()),
