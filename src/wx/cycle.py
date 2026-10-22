@@ -126,6 +126,7 @@ def run_cycle(ctx: Context, cycle: int | None = None) -> dict:
         book = Book.load(ctx.book_path)
         histories = {s: History.load(ctx.data_dir, s, now) for s in book.held()}
         book.update(histories, now, ctx.orders_log)
+        book.save(ctx.book_path)  # settled fills and exits are logged once, even if this cycle fails later
         account = book.account({s: f["price"] for s, f in table.items()}, now)
         record["cash_tmn"], record["held"] = int(account.cash), book.positions(table, now)
     else:

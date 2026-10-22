@@ -156,3 +156,22 @@ def test_a_held_market_without_a_price_counts_at_its_entry(tmp_path):
     book.place("BTCTMN", "trend", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, log)
     book.update({"BTCTMN": minutes(20, low_at=10)}, T0 + 1200, log)
     assert book.account({}, T0 + 1300).equity == pytest.approx(5_000_000)  # Wallex failed for BTCTMN: no KeyError
+
+
+def test_settled_orders_are_saved_even_if_the_cycle_fails_later(monkeypatch, tmp_path):
+    settings = Settings({"LLM_BASE_URL": "https://ai.example.com/v1", "LLM_MODEL": "m1", "LLM_API_KEY": "sk-x"})
+    ctx = Context({"BTCTMN": {}}, settings, tmp_path, role="veto", shadow=True)
+    book = Book()
+    book.place("BTCTMN", "trend", FEATURES, Verdict(1_000_000, 4.0, "approved", "approved"), T0, ctx.orders_log)
+    book.save(ctx.book_path)
+    monkeypatch.setattr(cycle, "collect_features", lambda symbols, s, d: ({"BTCTMN": FEATURES}, {}))
+    monkeypatch.setattr(cycle.History, "load", classmethod(lambda cls, d, s, now: minutes(70)))  # never fills
+
+    def broken_decide(*args, **kwargs):
+        raise RuntimeError("something unexpected")
+
+    monkeypatch.setattr(cycle, "decide", broken_decide)
+    monkeypatch.setattr(cycle.time, "time", lambda: T0 + 4200)
+    with pytest.raises(RuntimeError):
+        run_cycle(ctx, 1)
+    assert Book.load(ctx.book_path).orders[0].status == "cancelled"
