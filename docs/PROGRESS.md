@@ -427,3 +427,29 @@ Not done yet:
 
 Next change idea:
 - Out-of-sample test: run `wx study` and `wx backtest` on the 12 new markets. Keep only the setups that hold up there.
+
+### Change 15 — the AI as an agent with tools, and shadow trading — 2026-10-22
+Phase: 2 (AI role) and 3 (shadow orders)
+How to see it: `uv run wx run --shadow --role veto` (or `--role agent`), and `uv run wx replay --role agent`
+Proof it works:
+- The gateway supports tool calls (F23). Tests cover the tool loop: a normal call, a failing tool, and the round limit.
+- Tests show the tools never see candles after the moment being decided.
+- Shadow tests: a fake order waits, fills below the bid, is stopped out with the right costs, survives a save and load, and is cancelled if it never fills. A full shadow cycle with a fake AI places a 937,500 TMN buy, and the next cycle refuses a second buy of the same market.
+- `uv run pytest` passed 98 tests, with no internet.
+
+Research: research file 08 (guarded tools), 04 (shadow fills), 05b (order states).
+Questions: none
+Decisions: D27, D28. Fact F23.
+
+Shipped:
+- `llm.chat_with_tools`: a small loop. The AI may call tools a few times, then answers. Every call is kept in the reply.
+- `agent.py`: time-safe tools. The `agent` role (veto plus tools).
+- `shadow.py`: the fake book. `cycle.py`: the live cycle, moved out of `cli.py`, with the risk check and shadow orders.
+- `wx run` and `wx decide` take `--role` and `--shadow`.
+
+Not done yet:
+- The agent replay is still running. We don't know yet if tools help.
+- The shadow book has not traded live for long.
+
+Next change idea:
+- Read the agent replay. Run the out-of-sample test on the 12 new markets. Keep only what holds up.
