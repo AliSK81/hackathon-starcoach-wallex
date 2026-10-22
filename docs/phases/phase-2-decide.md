@@ -21,4 +21,5 @@ Goal: every cycle, the bot computes indicators from live data. The AI makes a de
 - [x] Results review. The AI said HOLD in every decision. The prompt asked for gains within a few hours, but over 4 hours prices usually move less than the round-trip cost. Fixed: the AI now judges over about a day (D20).
 - [x] `wx replay`: ask the AI about past moments. Report how often it buys, and what happened in the next 24 hours after each BUY and each HOLD.
 - [x] Setups. Code flags 4 setups (D22). The AI may only buy through one. `wx study` measures them without the AI (F19). `wx replay` compares the AI with taking every setup and with doing nothing, with a stop (D23). Result: the AI made it worse (F20).
-- [ ] Find a role where the AI adds value, and prove it with `wx replay`. Until the AI beats taking every setup, Phase 2 is not done.
+- [x] Find a role for the AI that does not make results worse. `pick` and `informed` did. `veto` did not (F21, D24).
+- [ ] Check the setups on markets they were never tuned on, and keep only ones that hold up.

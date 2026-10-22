@@ -401,3 +401,29 @@ Not done yet:
 
 Next change idea:
 - Try two AI roles in the replay, each against "take every setup": (1) the AI gets each setup's past results, computed only from data before that moment, and takes a setup unless it sees a specific warning; (2) code takes the mean-reversion setups, and the AI only vetoes in a market-wide crash. Keep whichever beats the setups alone, and say so honestly if neither does.
+
+### Change 14 — AI roles compared, risk check, and a portfolio backtest — 2026-10-22
+Phase: 2 results review, and the first part of Phase 3 (risk check)
+How to see it: `uv run wx backtest` (30 s, no AI), `uv run wx replay --role veto`
+Proof it works:
+- Replays (F21): `informed` made results worse, like `pick`. `veto` was neutral. So the AI's role is `veto` (D24).
+- `wx backtest` (F22): with taker orders almost nothing makes money. With limit orders the mean-reversion setups do, but not in both halves of the history, except oversold on few trades.
+- `uv run pytest` passed 87 tests. New tests cover the risk limits, the halt reset, limit-order fills, and one backtest trade.
+
+Research: research file 03 (risk limits), 04 (fill model), 06 (exits).
+Questions: none
+Decisions: D24, D25, D26. Facts F21, F22.
+
+Shipped:
+- `decide.py`: roles `pick`, `informed`, `veto`. Each role names the setups it may buy through. `wx replay --role`.
+- `study.py`: `SetupRecord`, each setup's record from before a moment.
+- `risk.py`: `check_buy` and `update_peak`. This is the Phase 3 risk check. It runs without internet.
+- `backtest.py` and `wx backtest`: policies x taker or limit orders x whole history or each half.
+- `History.exit_after` now returns the exit time.
+
+Not done yet:
+- No setup is proven on markets it was not chosen on. Candles for 12 more markets are downloading for that test.
+- `wx run` still uses the `pick` role and does not use the risk check.
+
+Next change idea:
+- Out-of-sample test: run `wx study` and `wx backtest` on the 12 new markets. Keep only the setups that hold up there.

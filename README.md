@@ -78,6 +78,12 @@ uv run wx study
 
 This shows how each buy setup did over the saved history, without the AI: held 24 hours, and with stop-losses of 2, 3 and 4 ATR. It takes about 30 seconds. It needs no AI.
 
+```bash
+uv run wx backtest
+```
+
+This trades 5,000,000 TMN hour by hour over the saved history, with rules only. Each policy buys some of the setups. The risk check sizes every buy. Each buy is held 24 hours or until its stop. It shows return, drawdown and trades for taker orders and for limit orders, over the whole history and each half. It needs no AI.
+
 ## Keys
 
 Copy `.env.example` to `.env` and fill in the values. Git ignores `.env`.
