@@ -83,6 +83,7 @@ All numbers are after fees (Wallex maker 0.25%, taker 0.30%, F3) and spread.
 What this means:
 - The trend rule made money over the last months, on markets it was not chosen on. Much of this comes from the Toman losing value: in these 120 days USDTTMN rose 63% (F24). That may not continue.
 - Over a single 3-day window the result is close to a coin flip. The edge shows in the average, through a few large winners.
+- In the 88-day backtest on our 6 markets, the profit came from 5 of them: ETH 37%, SOL 24%, USDT 19%, BTC 13%, PEPE 6%, XRP about 0. 74 of 93 trades ended by the trend rule, 15 at the stop. The 60% limit on coins was the rule that most often refused a buy.
 - Rules we tried that did not hold up are listed in F26, so nobody repeats them.
 
 ## How to re-run
