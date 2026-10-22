@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 3 (shadow running). Phase 2 done. Phases 6 and 7 started early, because they do not need a trading key.
+- **Current phase:** 4, waiting for a trading key. Phases 2 and 3 done. Phases 6 and 7 in progress. The shadow book keeps running.
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -588,3 +588,31 @@ Not done yet:
 
 Next change idea:
 - Keep the shadow book running. When a position closes, compare it with the backtest's trade() on the same candles.
+
+### Change 21 — Phase 3 done: 40 shadow cycles alone, a stop-out that matches the backtest, two AI failures fixed — 2026-10-22
+Phase: 3 (last), and fixes found live
+How to see it: `uv run wx shadow`, `uv run wx tradelog`
+Proof it works:
+- 40 shadow cycles with the agent role, through the night and the Tehran morning, with no crash. 36 asked the AI, 2 had nothing to decide, 2 failed and held every market.
+- Orders: 4 placed, 4 filled within minutes, 1 stopped out. BTCTMN closed at -2.83% net, exactly the stop plus fees and half the spread (F39). The bot then bought BTCTMN again, lower, because the trend was still up. That position is up since.
+- The risk check refused 74 buys at the 60% and 25% limits. The AI gave 33 `illiquid` vetoes on USDTTMN at night, all supported by the data.
+- The two failures: a gateway HTTP 500 (now retried once, F37) and broken JSON after tool calls (now asked for once more in JSON mode, F39).
+- Typical spreads now come from 237 live samples per market, night and day (F38).
+- `uv run pytest` passed 122 tests. `uvx ruff check src tests` is clean.
+
+Research: none new.
+Questions: none
+Decisions: none new. Facts F37 to F39.
+
+Shipped:
+- `llm.post`: one retry on a server error, lost connection or timeout.
+- `chat_with_tools`: one more try in JSON mode if the final answer is broken.
+- `cycle.run_cycle`: the book is saved right after settling.
+- `shadow.Order.value`: a held market without a fresh price counts at its entry.
+
+Not done yet:
+- Phase 4 needs a Wallex key that can trade but not withdraw.
+- The team decision from change 20 (the Toman drift) is still open.
+
+Next change idea:
+- Phase 4 plan, once the trading key is in `.env`. Until then, keep the shadow book running.

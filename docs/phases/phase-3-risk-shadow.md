@@ -16,5 +16,5 @@ Goal: every AI decision goes through a risk check written in normal code. Approv
 - [x] Portfolio backtest that uses the risk check (`wx backtest`).
 - [x] Shadow book with fake limit orders (`wx run --shadow`). Tested without internet.
 - [x] Each setup has its own exit rule. Trading is trend-only (D29).
-- [ ] The shadow book runs alone for several cycles, with fills, exits and at least one rejection, and does not crash.
-- [ ] Results review (ROADMAP rule 11): shadow results look like the backtest, and the AI's veto does not make results worse.
+- [x] The shadow book runs alone for several cycles, with fills, exits and at least one rejection, and does not crash. 40 cycles, 4 fills, 1 stop, 74 rejections, no crash (change 21).
+- [x] Results review (ROADMAP rule 11): the stop-out came out exactly as `trade()` models it (F39). The checked veto does not make results worse (F31, F33). Both AI failures held every market, and their causes are fixed (F37, F39).
