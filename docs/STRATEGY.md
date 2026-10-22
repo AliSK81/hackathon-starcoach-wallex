@@ -45,6 +45,7 @@ Wallex REST API ──> candles + order book ──> features (code, 28 per mark
 - Code checks every answer (D18). Unknown actions, made-up features, a SELL of a coin we don't hold, or a buy through a setup that is not active: all become HOLD, and the problem is logged. The values of the cited features in the log come from our data, not from the AI's text.
 - The AI can call tools (role `agent`, D27): the features of any market, recent hourly prices, and each setup's past record. The tools only see data up to the moment being decided.
 - If the AI fails, nothing is bought (fail closed).
+- Wallex data comes from the official REST API through our own small client (`wallex.py`). Wallex also offers an MCP server for AI agents. We don't give it to the AI: it has no order limits on the server side (research file 05c), and in this bot the AI never places orders. The AI's tools (`agent.py`) only read our own saved data.
 - The AI's full answer and its reasoning text are logged with every decision.
 
 ### Why the AI may not simply decide
