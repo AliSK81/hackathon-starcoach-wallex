@@ -10,7 +10,7 @@
 
 Update this after every change.
 
-- **Current phase:** 2, reopened (see change 12)
+- **Current phase:** 2 and 3 together (the strategy changed in change 16)
 - **Live trading:** not live yet
 - **Version trading live:** none yet
 
@@ -453,3 +453,31 @@ Not done yet:
 
 Next change idea:
 - Read the agent replay. Run the out-of-sample test on the 12 new markets. Keep only what holds up.
+
+### Change 16 — the Toman drift, and a trend strategy that holds up on new markets — 2026-10-22
+Phase: 2 (strategy) and 3 (risk check, shadow)
+How to see it: `uv run wx backtest`, then `uv run wx backtest PUMPTMN ARBTMN BNBTMN DOGETMN TRXTMN STMN APETMN SUITMN LTCTMN UNITMN ADATMN SANDTMN`
+Proof it works:
+- Prices in Toman rose a lot (F24). Our earlier setups sold after 24 hours, so they missed most of every trend.
+- Each setup now has its own exit rule. `trend` rides a 1h uptrend until the EMA 20 falls below the EMA 50.
+- Backtest with the risk check and limit orders (F25): +36.8% on our 6 markets and +43.6% on 12 markets not used to pick it. Both halves were positive in both cases. Worst drawdown 7.9% and 12.7%.
+- The dip setups lost on the new markets (-8.1%). They are no longer traded (D29).
+- `uv run pytest` passed 100 tests. `uvx ruff check src tests` is clean.
+
+Research: research file 06 (EMA trend rules). It warned that the USDTTMN drift may not last. F24 says the same.
+Questions: none
+Decisions: D29. Facts F24, F25.
+
+Shipped:
+- `trades.py`: `History` and `trade()`. One walk decides fills, stops, setup exits and costs for the backtest, replay, study and shadow book.
+- `setups.py`: each setup has an entry and an exit rule. New `trend`. `breakout` and `trend_momentum` removed.
+- `backtest.py`, `study.py`, `replay.py`, `shadow.py` now use `trade()`.
+- Phase 3 plan: [phases/phase-3-risk-shadow.md](phases/phase-3-risk-shadow.md).
+
+Not done yet:
+- The veto replay on trend moments is running. We don't know yet if the AI's vetoes help or hurt.
+- The live shadow book has just restarted with the trend veto.
+- The drawdown on volatile coins (12.7%) is above the 6% halt line. The halt pauses buying, but does not cut open positions.
+
+Next change idea:
+- Read the trend veto replay and the shadow cycles. Then look at drawdown: fewer coins at once, or smaller size on volatile coins.
