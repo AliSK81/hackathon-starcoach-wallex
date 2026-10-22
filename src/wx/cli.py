@@ -337,82 +337,74 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wx", description="Wallex trading bot.")
     parser.add_argument("--version", action="version", version=f"wx {__version__}")
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("markets", help="list allowed markets and save a snapshot")
-    candles = commands.add_parser("candles", help="save 1-minute and 1-hour candles")
-    candles.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    candles.add_argument("--days", type=int, default=KEEP_DAYS, help=f"how far back to keep (default {KEEP_DAYS})")
-    watcher = commands.add_parser("watch", help="read live prices on a fixed beat and log them")
-    watcher.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    watcher.add_argument("--interval", type=int, default=60, help="seconds between cycles (default 60)")
-    watcher.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
-    commands.add_parser("account", help="read balances and fees (needs WALLEX_API_KEY)")
-    rules = commands.add_parser("rules", help="show decimals and minimum order size per market")
-    rules.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    commands.add_parser("ai", help="check the AI settings with one small call")
-    decider = commands.add_parser("decide", help="one AI decision per market, checked and logged (no real orders)")
-    decider.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    replayer = commands.add_parser("replay", help="ask the AI about past moments and see what happened next")
-    replayer.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+
+    def command(name: str, help_: str, symbols: bool = True) -> argparse.ArgumentParser:
+        sub = commands.add_parser(name, help=help_)
+        if symbols:
+            sub.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
+        return sub
+
+    def ai_role(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
+                         help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
+
+    def beat(sub: argparse.ArgumentParser, interval: int) -> None:
+        sub.add_argument("--interval", type=int, default=interval, help=f"seconds between cycles (default {interval})")
+        sub.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
+
+    command("markets", "list allowed markets and save a snapshot", symbols=False)
+    command("account", "read balances and fees (needs WALLEX_API_KEY)", symbols=False)
+    command("ai", "check the AI settings with one small call", symbols=False)
+    command("shadow", "show the shadow book: cash, open orders, closed trades", symbols=False)
+    command("rules", "show decimals and minimum order size per market")
+    command("features", "indicators per market, from candles and the live book")
+    command("backtest", "trade 5,000,000 TMN over the saved history, rules only")
+    command("candles", "save 1-minute and 1-hour candles").add_argument(
+        "--days", type=int, default=KEEP_DAYS, help=f"how far back to keep (default {KEEP_DAYS})")
+    beat(command("watch", "read live prices on a fixed beat and log them"), 60)
+    command("study", "how each buy setup did in the past, without the AI").add_argument(
+        "--stops", type=float, nargs="*", default=[2.0, 3.0, 4.0],
+        help="stop-losses to try, in 1h ATRs below the entry (default 2 3 4)")
+    for name, help_ in (("decide", "one AI decision per market, checked and logged (no real orders)"),
+                        ("run", "decide on a fixed beat and log every cycle (no real orders)")):
+        sub = command(name, help_)
+        ai_role(sub)
+        sub.add_argument("--shadow", action="store_true", help="trade a fake book with the risk check")
+        if name == "run":
+            beat(sub, DECIDE_EVERY)
+    replayer = command("replay", "ask the AI about past moments and see what happened next")
+    ai_role(replayer)
     replayer.add_argument("--moments", type=int, default=40, help="how many past moments (default 40)")
     replayer.add_argument("--days", type=int, default=60, help="pick moments from the last N days (default 60)")
     replayer.add_argument("--seed", type=int, default=7, help="picks the same moments again (default 7)")
-    replayer.add_argument("--workers", type=int, default=4, help="AI calls at the same time (default 4)")
+    replayer.add_argument("--workers", type=int, default=3, help="AI calls at the same time (default 3)")
     replayer.add_argument("--any-time", action="store_true", help="pick any moments, not only ones with a setup")
     replayer.add_argument("--from", dest="saved", type=Path, default=None,
                           help="summarize a saved replay log instead of asking the AI")
-    replayer.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
-                          help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
-    commands.add_parser("shadow", help="show the shadow book: cash, open orders, closed trades")
-    tester = commands.add_parser("backtest", help="trade 5,000,000 TMN over the saved history, rules only")
-    tester.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    studier = commands.add_parser("study", help="how each buy setup did in the past, without the AI")
-    studier.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    studier.add_argument("--stops", type=float, nargs="*", default=[2.0, 3.0, 4.0],
-                         help="stop-losses to try, in 1h ATRs below the entry (default 2 3 4)")
-    runner = commands.add_parser("run", help="decide on a fixed beat and log every cycle (no orders)")
-    runner.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
-    runner.add_argument("--interval", type=int, default=DECIDE_EVERY,
-                        help=f"seconds between cycles (default {DECIDE_EVERY})")
-    runner.add_argument("--cycles", type=int, default=None, help="stop after this many cycles (default: never)")
-    for sub in (decider, runner):
-        sub.add_argument("--role", choices=list(ROLES), default=DEFAULT_ROLE,
-                         help=f"what the AI is asked to do (default {DEFAULT_ROLE})")
-        sub.add_argument("--shadow", action="store_true", help="trade a fake book with the risk check")
-    features = commands.add_parser("features", help="indicators per market, from candles and the live book")
-    features.add_argument("symbols", nargs="*", help=f"default: {' '.join(DEFAULT_SYMBOLS)}")
     args = parser.parse_args(argv)
     # Wallex messages can be in Persian. Never crash on a console that can't show them.
     # Print each line at once, so a long run's output is never held back.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="backslashreplace", line_buffering=True)
-    if args.command == "account":
-        return run_account(Settings.load())
-    if args.command == "ai":
-        return run_ai(Settings.load())
-    if args.command == "replay":
-        return run_replay_cmd(args.symbols, Settings.load(), args.moments, args.days, args.seed, args.workers,
-                              args.any_time, args.role, args.saved)
-    if args.command == "shadow":
-        print(shadow_report(Book.load(DATA_DIR / "shadow" / "book.json")))
-        return 0
-    if args.command == "backtest":
-        return run_backtest(args.symbols, Settings.load())
-    if args.command == "study":
-        return run_study(args.symbols, Settings.load(), args.stops)
-    if args.command == "run":
-        return run_loop(args.symbols, Settings.load(), args.interval, args.cycles, args.role, args.shadow)
-    if args.command == "decide":
-        return run_decide(args.symbols, Settings.load(), args.role, args.shadow)
-    if args.command == "features":
-        return run_features(args.symbols, Settings.load())
-    if args.command == "markets":
-        return run_markets()
-    if args.command == "candles":
-        return run_candles(args.symbols, args.days)
-    if args.command == "watch":
-        return run_watch(args.symbols, args.interval, args.cycles)
-    if args.command == "rules":
-        return run_rules(args.symbols)
+    a = args
+    actions = {
+        "markets": lambda: run_markets(),
+        "account": lambda: run_account(Settings.load()),
+        "ai": lambda: run_ai(Settings.load()),
+        "shadow": lambda: print(shadow_report(Book.load(DATA_DIR / "shadow" / "book.json"))) or 0,
+        "rules": lambda: run_rules(a.symbols),
+        "features": lambda: run_features(a.symbols, Settings.load()),
+        "backtest": lambda: run_backtest(a.symbols, Settings.load()),
+        "candles": lambda: run_candles(a.symbols, a.days),
+        "watch": lambda: run_watch(a.symbols, a.interval, a.cycles),
+        "study": lambda: run_study(a.symbols, Settings.load(), a.stops),
+        "decide": lambda: run_decide(a.symbols, Settings.load(), a.role, a.shadow),
+        "run": lambda: run_loop(a.symbols, Settings.load(), a.interval, a.cycles, a.role, a.shadow),
+        "replay": lambda: run_replay_cmd(a.symbols, Settings.load(), a.moments, a.days, a.seed, a.workers,
+                                         a.any_time, a.role, a.saved),
+    }
+    if a.command in actions:
+        return actions[a.command]()
     print(status(Settings.load()))
     return 0
 

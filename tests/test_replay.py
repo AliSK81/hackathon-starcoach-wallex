@@ -59,7 +59,7 @@ def no_lookup(symbol, hour):
 
 def test_moment_records_how_each_setup_played_out():
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
-    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup)
+    result = replay_moment(T0, histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup, "pick")
     assert result["driver"] == "ai" and result["decisions"][0]["action"] == "BUY"
     # 90 -> 99 is +10%. The cost is 2 x 0.3% fee + 0.2% spread = 0.8%. No stop is hit, and with
     # no features for later hours the trade runs to the end of the data.
@@ -79,7 +79,7 @@ def test_replay_logs_each_moment_and_survives_ai_failures(tmp_path):
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
     log = tmp_path / "replay" / "run.jsonl"
     results = run_replay([T0, T0 + 900], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, flaky, no_lookup, log,
-                         workers=1)
+                         workers=1, role="pick")
     assert len(log.read_text(encoding="utf-8").splitlines()) == 2
     assert sorted(r["driver"] for r in results) == ["ai", "fallback"]
     text = summary(results)
@@ -152,7 +152,7 @@ def test_a_saved_replay_can_be_summarized_without_the_ai(tmp_path, capsys):
 
     histories = {"BTCTMN": history(drop_to=90.0, after=99.0)}
     log = tmp_path / "run.jsonl"
-    run_replay([T0], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup, log, workers=1)
+    run_replay([T0], histories, {"BTCTMN": 0.2}, {"BTCTMN": 0.003}, buy_reply, no_lookup, log, workers=1, role="pick")
     capsys.readouterr()
     assert cli.main(["replay", "--from", str(log)]) == 0
     assert "AI buys                               1  average net +9.20%" in capsys.readouterr().out

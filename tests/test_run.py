@@ -57,7 +57,7 @@ def test_run_logs_every_cycle_whatever_happens(monkeypatch, tmp_path, capsys):
 
     fake_world(monkeypatch, tmp_path, chat)
     monkeypatch.setattr(cycle, "collect_features", collect)
-    assert cli.main(["run", "--cycles", "4"]) == 0
+    assert cli.main(["run", "--cycles", "4", "--role", "pick"]) == 0
 
     log = read_log(tmp_path)
     assert [r["cycle"] for r in log] == [1, 2, 3, 4]

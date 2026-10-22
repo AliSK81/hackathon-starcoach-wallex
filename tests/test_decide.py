@@ -110,20 +110,20 @@ def test_ai_failure_means_hold_everywhere():
     def ask(messages):
         raise LLMError("chat failed: refused")
 
-    record = decide(TABLE, 5_000_000, {}, ask)
+    record = decide(TABLE, 5_000_000, {}, ask, "pick")
     assert record["driver"] == "fallback" and record["ai"] is None
     assert [d["action"] for d in record["decisions"]] == ["HOLD", "HOLD"]
 
 
 def test_bad_json_is_logged_and_means_hold():
-    record = decide(TABLE, 5_000_000, {}, lambda messages: reply("I think BUY"))
+    record = decide(TABLE, 5_000_000, {}, lambda messages: reply("I think BUY"), "pick")
     assert record["driver"] == "fallback" and "no JSON object" in record["error"]
     assert record["ai"]["answer"] == "I think BUY" and record["ai"]["reasoning"] == "because"
     assert all(d["action"] == "HOLD" for d in record["decisions"])
 
 
 def test_good_answer_record():
-    record = decide(TABLE, 5_000_000, {}, lambda messages: reply(json.dumps(answer(item()))))
+    record = decide(TABLE, 5_000_000, {}, lambda messages: reply(json.dumps(answer(item()))), "pick")
     assert record["driver"] == "ai" and record["error"] is None and record["market_view"] == "up"
     assert by_symbol(record["decisions"])["BTCTMN"]["action"] == "BUY"
 
@@ -174,7 +174,7 @@ def test_wx_decide_end_to_end_without_internet(monkeypatch, tmp_path, capsys):
         return reply(json.dumps(answer(item())))
 
     monkeypatch.setattr(cycle, "chat", fake_chat)
-    assert cli.main(["decide"]) == 0
+    assert cli.main(["decide", "--role", "pick"]) == 0
     out = capsys.readouterr().out
     assert "BTCTMN    BUY  0.70" in out and "cited: rsi14=72.2" in out
     record = json.loads(next((tmp_path / "decisions").glob("*.jsonl")).read_text(encoding="utf-8"))
