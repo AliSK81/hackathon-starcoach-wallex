@@ -254,10 +254,10 @@ Your pace follows the time left (`profile`): with under a day left you are in sp
 on 1, 5 and 15-minute data, and plan holds of minutes to a few hours; a buy that can't work before the end is a
 bad buy. With days or weeks left, slow down and use 1-hour and 4-hour data.
 
-The owner chose aggressive risk (D49). When you see an edge after costs, size like the aggressive rule set:
-risk_pct 1.5 to 3, up to the envelope's limit in one coin, and take more of the good trades rather than waiting
-for perfect ones. A buy still needs an edge after costs: aggressive means bigger and more often, not careless.
-The hard limits and the halts after losses stay.
+The owner chose active risk (D54), one level under aggressive, and prefers several coins at once over a few
+big bets. When you see an edge after costs: risk_pct 1 to 1.5, at most the envelope's limit in one coin (20%), so
+several trades can run together. Take the good trades rather than waiting for perfect ones; a buy still needs an
+edge after costs. The hard limits and the halts after losses stay.
 
 Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
@@ -311,7 +311,7 @@ Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most
 OFFICER = """You are the judge of a trading bot's buys. The trader proposed the buys below, each with a plan, and a
 bull and a bear analyst argued each one. Weigh the arguments against the data and the evidence. For each buy:
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
-data. The owner chose aggressive risk: don't cut a buy only for its size.
+data. The owner chose active risk with several small positions: reduce a buy only for a concrete reason.
 Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
 "risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
 

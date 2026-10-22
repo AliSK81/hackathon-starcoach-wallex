@@ -206,7 +206,7 @@ class Envelope:
     max_risk_pct: float = 3.0  # most of equity one stop-out may lose, costs included
     min_stop_pct: float = 1.0
     max_stop_pct: float = 15.0
-    max_position: float = 0.40  # never all-in: at most this share of equity in one coin
+    max_position: float = 0.20  # at most this share of equity in one coin: several positions at once (D54)
     max_exposure: float = 0.80  # and at most this share in coins together
     daily_loss: float = 0.04  # no new buys after losing this much today
     max_drawdown: float = 0.10  # no new buys while this far below the peak (the halt ends after halt_hours)

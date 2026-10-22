@@ -93,12 +93,12 @@ def plan(buys=(), sells=()):
 
 
 def test_the_agents_buy_is_sized_by_code_and_placed_with_its_exit_plan():
-    b, logs = brain([plan([buy(target_pct=3, max_hours=8, order="taker")])], {"SOLTMN": market()})
+    b, logs = brain([plan([buy(risk_pct=0.9, target_pct=3, max_hours=8, order="taker")])], {"SOLTMN": market()})
     state = build_graph(b).invoke({})
     [d] = state["decisions"]
     assert d["action"] == "BUY" and d["verdict"]["rule"] == "approved"
-    # 1% of 5,000,000 lost at a 4% stop plus 0.7% cost: 50,000 / 0.047
-    assert d["verdict"]["tmn"] == round(50_000 / 0.047)
+    # 0.9% of 5,000,000 lost at a 4% stop plus 0.7% cost: 45,000 / 0.047 (under the 20% cap in one coin)
+    assert d["verdict"]["tmn"] == round(45_000 / 0.047)
     symbol, strategy, tmn, exits = b.executor.bought[0]
     assert exits == {"target_pct": 3.0, "max_hours": 8.0, "trend_exit": False, "order": "taker", "fill_minutes": 60}
     assert logs[0]["role"] == "brain" and logs[0]["plan"]["approach"] == "normal"
@@ -295,7 +295,7 @@ def test_no_buy_in_a_market_that_closes_soon_and_the_agent_is_told():
     assert not b.executor.bought and state["decisions"][0]["verdict"]["rule"] == "market closes"
     facts = json.loads(SEEN[0][1].content.split("\n\n")[0])
     assert "SOLTMN" in facts["markets_closing_utc"]
-    assert "aggressive risk" in SEEN[0][0].content
+    assert "active risk" in SEEN[0][0].content
     b.market_closes = lambda: {"SOLTMN": NOW - 60}  # closed already: still listed, still refused
     SEEN.clear()
     b.llm = RecordingLLM(responses=[AIMessage(json.dumps(plan([buy()])))])
