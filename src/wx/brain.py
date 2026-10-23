@@ -152,9 +152,12 @@ OVERVIEW = ("price", "move_x_cost", "spread_pct", "ret_1h_pct", "ret_24h_pct", "
             "ema20_vs_ema50_pct", "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "atr14_pct", "regime",
             "zero_volume_hours_24", "setups")
 # In sprint the overview leads with the fast features (features.fast_features).
+# Every timeframe in one row, 1 minute to 48 hours: the agent rarely calls tools, so the dip and reversal numbers the
+# strategy map needs (rsi14, zscore_48h, setups) must be here (F82).
 FAST_OVERVIEW = ("price", "move_x_cost", "spread_pct", "ret_5m_pct", "ret_30m_pct", "ret_1h_pct", "ret_24h_pct",
                  "ema9_vs_ema21_5m_pct", "rsi14_5m", "bb_z_5m", "atr14_5m_pct", "vol_ratio_5m", "vwap_4h_dev_pct",
-                 "range_1h_pct", "pos_in_1h_range", "ema20_vs_ema50_pct", "regime")
+                 "range_1h_pct", "pos_in_1h_range", "rsi14_15m", "rsi14", "bb_z_20", "zscore_48h", "adx14",
+                 "ema20_vs_ema50_pct", "trend_4h_pct", "regime", "setups")
 
 
 class State(TypedDict, total=False):
