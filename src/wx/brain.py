@@ -54,10 +54,11 @@ from wx.closures import NO_BUY_MINUTES, closing
 from wx.features import FEATURES
 from wx.horizon import Profile, profile
 from wx.llm import LLMError, parse_json
-from wx.risk import ENVELOPE, Account, Envelope, clamp, size_plan
+from wx.risk import CASH_LIKE, ENVELOPE, Account, Envelope, clamp, size_plan
 from wx.setups import SETUPS
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+MIN_MOVE_X_COST = 2.0  # a market must usually move this many times its round trip in a day (D56)
 RECENT_CYCLES = 8  # cycle summaries the agent sees from its short-term memory
 MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
@@ -262,6 +263,8 @@ The envelope's limits apply to new buys only. A position bought under an older, 
 never sell a position only to fit a limit, because a sell closes all of it and pays the costs (F74).
 
 Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
+Code refuses a buy in a market whose typical_24h_move_pct is under 2 times its round_trip_cost_pct: it cannot
+move enough to pay for itself (D56). Pick markets that move: compare those two numbers first.
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
 code refuses the buy and sells what we hold there before the close.
 
@@ -472,6 +475,12 @@ def build_graph(b: Brain, checkpointer=None):
                 if d["action"] != "BUY":
                     continue
                 f = table[d["symbol"]]
+                move, cost = f.get("typical_24h_move_pct"), f.get("round_trip_cost_pct")
+                if move and cost and move < MIN_MOVE_X_COST * cost and d["symbol"] not in CASH_LIKE:
+                    d["verdict"] = {"tmn": 0, "rule": "moves too little",
+                                    "reason": f"rejected: it moves {move}% a day, under {MIN_MOVE_X_COST}x its "
+                                              f"{cost}% round trip (D56)"}
+                    continue
                 if closing(b.market_closes(), d["symbol"], now, NO_BUY_MINUTES):
                     d["verdict"] = {"tmn": 0, "rule": "market closes",
                                     "reason": "rejected: Wallex closes this market soon, we could not sell it"}
