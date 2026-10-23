@@ -328,3 +328,18 @@ def test_the_agent_sees_move_x_cost_and_decides_itself():
     overview = facts["markets_overview"]
     assert overview["rows"][0][overview["columns"].index("move_x_cost")] == 1.1
     assert b.executor.bought  # no rule in code: the agent's own judgment
+
+
+def test_code_fetches_the_book_and_candles_for_every_proposed_buy():
+    case = {"cases": [{"symbol": "SOLTMN", "argument": "x", "evidence": ["rsi14"], "strength": 0.5}]}
+    review = {"reviews": [{"symbol": "SOLTMN", "verdict": "APPROVE", "reason": "ok"}]}
+    b, _ = brain([], {"SOLTMN": market()}, officer=True, debate=True)
+    asked = []
+    b.micro = lambda s: asked.append(s) or {"book": {"ask_tmn_within_1pct": 10_000_000_000}}
+    b.candles = lambda s, m, n: [{"t": "10:00", "c": 0.1, "m": m}]
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(x)) for x in (plan([buy()]), case, case, review)])
+    SEEN.clear()
+    state = build_graph(b).invoke({})
+    assert asked == ["SOLTMN"] and set(state["checks"]["SOLTMN"]) == {"5m", "15m"}
+    judge = next(m for m in SEEN if "judge of a trading bot" in m[0].content)
+    assert '"candles"' in judge[1].content and '"books"' in judge[1].content

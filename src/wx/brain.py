@@ -166,6 +166,7 @@ class State(TypedDict, total=False):
     hours_left: float | None
     table: dict
     micro: dict
+    checks: dict  # per proposed buy: the 5- and 15-minute candles code fetched for the reviewers (F84)
     positions: dict
     account: dict
     closed: list
@@ -338,7 +339,8 @@ bull and a bear analyst argued each one. Weigh the arguments against the data an
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
 data. The owner wants up to 95% of equity working in several moving coins, built up over time (see
 owner_instructions). APPROVE by default. REDUCE or REJECT only for a concrete risk beyond the coin's usual swings:
-no buyers near the price, a spread over 1%, a stop the market can't respect, overbought and stretched (rsi14 over
+no buyers near the price (see `books`), a move already done in the last 5- and 15-minute bars (see `candles`),
+a spread over 1%, a stop the market can't respect, overbought and stretched (rsi14 over
 70 with bb_z_20 over 2: wait for a pullback), no recent volume for a momentum buy (vol_ratio_5m near 0), no trend
 for a trend buy (regime range and adx14 under 20), or a number in the reason that is not in the data. Never cut a
 buy only for weak 5-minute momentum or a small edge: every buy has those, and cutting all of them left the account
@@ -444,7 +446,8 @@ def build_graph(b: Brain, checkpointer=None):
               "tokens": token_count(messages), "cached_tokens": cached_tokens(messages), "error": error,
               "model": getattr(b.llm, "model_name", ""),
               "largest_prompt_tokens": largest_prompt(messages)}
-        return {"plan": plan, "ai": ai, "table": {**table, **extra}, "micro": micro,
+        checks = pre_buy_checks(b, plan, micro)
+        return {"plan": plan, "ai": ai, "table": {**table, **extra}, "micro": micro, "checks": checks,
                 "fail_streak": state.get("fail_streak", 0) + 1 if error else 0,
                 "tokens_today": state.get("tokens_today", 0) + ai["tokens"]}
 
@@ -453,7 +456,8 @@ def build_graph(b: Brain, checkpointer=None):
             buys = state["plan"].get("buys") or []
             facts = {"buys": buys, "hours_left": state["hours_left"],
                      "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
-                     "books": state.get("micro"), "btc": state["table"].get("BTCTMN")}
+                     "books": state.get("micro"), "candles": state.get("checks"),
+                     "btc": state["table"].get("BTCTMN")}
             try:
                 reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
                     [SystemMessage(DEBATER.format(side=side) + EVIDENCE_NOTE), HumanMessage(compact(facts))])
@@ -471,7 +475,8 @@ def build_graph(b: Brain, checkpointer=None):
         facts = {"hours_left": state["hours_left"], "buys": buys, "approach": state["plan"].get("approach"),
                  "owner_instructions": b.owner_note() or None,
                  "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
-                 "books": state.get("micro"), "bull_case": state.get("bull"), "bear_case": state.get("bear"),
+                 "books": state.get("micro"), "candles": state.get("checks"),
+                 "bull_case": state.get("bull"), "bear_case": state.get("bear"),
                  "account": state["account"]}
         spent = sum((state.get(s) or {}).get("tokens", 0) for s in ("bull", "bear"))
         try:
@@ -555,7 +560,7 @@ def build_graph(b: Brain, checkpointer=None):
 
     def journal(state: State) -> State:
         record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "micro", "plan",
-                                             "review", "decisions", "orders", "closed", "lessons", "ai", "problems",
+                                             "review", "decisions", "orders", "closed", "lessons", "ai", "problems", "checks",
                                              "bull", "bear", "theses", "fail_streak", "tokens_today")}
         record.update(decided_at=state.get("now"), role="brain", markets=state.get("table"),
                       executor=b.executor.kind)
@@ -628,6 +633,30 @@ def regime_of(f: dict, h: float | None) -> dict:
     return {"volatility": vol_regime, "trend": trend, "direction": direction, "volume": volume, "hurst_100h": h,
             "mean_reversion": None if h is None else "reverting" if h < 0.4 else "trending" if h > 0.6 else "random",
             "playbook": playbook}
+
+
+def pre_buy_checks(b: Brain, plan: dict, micro: dict) -> dict:
+    """The checks the trader should run before a buy, run by code for every buy it proposes: the live order book
+    and the 5- and 15-minute candles. The trader often skipped them (F84); now the bull, the bear and the judge
+    always see them, and the book-depth size limit always applies. Data only: the AI still decides."""
+    checks = {}
+    for x in plan.get("buys") or []:
+        symbol = x.get("symbol")
+        if not isinstance(symbol, str) or symbol in checks:
+            continue
+        if symbol not in micro:
+            try:
+                micro[symbol] = b.micro(symbol)
+            except Exception as e:  # noqa: BLE001 - the reviewers see the error instead
+                micro[symbol] = {"error": f"{type(e).__name__}: {e}"[:200]}
+        out = {}
+        for minutes, bars in ((5, 12), (15, 8)):
+            try:
+                out[f"{minutes}m"] = b.candles(symbol, minutes, bars) if b.candles else []
+            except Exception as e:  # noqa: BLE001
+                out[f"{minutes}m"] = [{"error": f"{type(e).__name__}: {e}"[:200]}]
+        checks[symbol] = out
+    return checks
 
 
 def analyst_tools(b: Brain, state: State, extra: dict, micro: dict) -> list:
