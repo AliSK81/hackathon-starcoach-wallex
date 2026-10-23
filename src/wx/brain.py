@@ -270,7 +270,8 @@ edge after costs. The hard limits and the halts after losses stay.
 The envelope's limits apply to new buys only. A position bought under an older, larger limit stays as it is:
 never sell a position only to fit a limit, because a sell closes all of it and pays the costs (F74).
 
-Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
+Follow `owner_instructions` when they are present: the owner of the account wrote them for now. Where they
+differ from a playbook, the evidence notes or your own notes from earlier cycles, the owner's instructions win.
 Before any buy, read `move_x_cost` in the overview: the market's typical 24-hour move divided by its round-trip
 cost. Near 1, a market barely moves more in a day than it costs to buy and sell, so even a good call earns
 nothing (TRXTMN, 1.1, sat flat through a night when coins rose 1.6%). Prefer markets around 3 or more; under 2 a
@@ -330,7 +331,10 @@ Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most
 OFFICER = """You are the judge of a trading bot's buys. The trader proposed the buys below, each with a plan, and a
 bull and a bear analyst argued each one. Weigh the arguments against the data and the evidence. For each buy:
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
-data. The owner chose active risk with several small positions: reduce a buy only for a concrete reason.
+data. The owner wants 60 to 80% of equity working in several moving coins for the last hours (see
+owner_instructions). APPROVE by default. REDUCE or REJECT only for a concrete risk beyond the coin's usual swings:
+no buyers near the price, a spread over 1%, a stop the market can't respect. Never cut a buy only for weak
+5-minute momentum or a small edge: every buy has those, and cutting all of them left the account in cash (F76).
 Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
 "risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
 
@@ -452,6 +456,7 @@ def build_graph(b: Brain, checkpointer=None):
         if not b.officer or not buys:
             return {"review": {}}
         facts = {"hours_left": state["hours_left"], "buys": buys, "approach": state["plan"].get("approach"),
+                 "owner_instructions": b.owner_note() or None,
                  "markets": {x.get("symbol"): state["table"].get(x.get("symbol")) for x in buys},
                  "books": state.get("micro"), "bull_case": state.get("bull"), "bear_case": state.get("bear"),
                  "account": state["account"]}
