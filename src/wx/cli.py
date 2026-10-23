@@ -303,7 +303,7 @@ def run_verify_log(day: str | None, live: bool) -> int:
         print(f"No log at {path}")
         return 1
     checked, problems = verify_chain(path)
-    print(f"{path}: {checked} chained records, {'no problems' if not problems else len(problems)} problems")
+    print(f"{path}: {checked} chained records, " + (f"{len(problems)} problems" if problems else "no problems"))
     for p in problems:
         print("  " + p)
     return 1 if problems else 0
