@@ -47,6 +47,7 @@ Map it to the time left:
 - **More than 6 hours left:** buy deep dips and volatile coins that have fallen (low rsi14, low zscore_48h, high
   move_x_cost), maker when there is time, and hold them hours, not minutes. Several at once.
 - **3 to 6 hours left:** only clear deep dips, maker only. Keep good positions; do not churn.
-- **Under 3 hours left:** no new buys: every strategy above lost at holds this short. Keep or cut what you hold.
+- **Under 3 hours left:** stay invested in the good coins you hold (the owner wants 60-80% working). Do not open
+  quick in-and-out trades: every strategy above lost at holds this short. Rotate only into a clearly better coin.
 - **Last hour:** only sell. Everything is sold 30 minutes before the end.
 At every horizon, buying what already rose most was the worst choice. Use it only with a very strong, specific reason.

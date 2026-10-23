@@ -398,7 +398,10 @@ def build_graph(b: Brain, checkpointer=None):
         extra: dict[str, dict] = {}
         micro: dict[str, dict] = {}
         tools = analyst_tools(b, state, extra, micro)
-        prompt = analyst_prompt(state["profile"].get("skill", ""), b.env)
+        # The time-left strategy map lives in the sprint playbook; it is needed whenever a day or less is left.
+        hours = state["hours_left"]
+        skill = "sprint-trading" if hours is not None and hours <= 24 else state["profile"].get("skill", "")
+        prompt = analyst_prompt(skill, b.env)
         view = portfolio_view(state["account"], state["positions"], state["hours_left"], b.executor.ledger(),
                               state["now"], b.env)
         note = b.owner_note()

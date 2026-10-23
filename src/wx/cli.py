@@ -257,6 +257,12 @@ def run_agent(symbols: list[str], settings: Settings, live: bool, end_at: str | 
         if markets is None:
             return 1
     end = parse_end(end_at)
+    override = DATA_DIR / "end_at.txt"  # the organizers can move the end; this file wins over --end-at (D59)
+    if override.is_file():
+        try:
+            end = parse_end(override.read_text(encoding="utf-8").strip())
+        except ValueError as error:
+            print(f"Ignoring {override}: {error}")
     executor = live_executor(markets, settings, end) if live else ShadowExecutor(DATA_DIR)
     if executor is None:
         return 1
