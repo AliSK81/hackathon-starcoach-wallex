@@ -261,7 +261,7 @@ def test_static_text_is_in_the_cached_system_prompt_and_the_portfolio_in_the_fac
     system, human = SEEN[0][0], SEEN[0][1]
     assert "Skill trader-core:" in system.content and "short_term" in system.content
     facts = json.loads(human.content.split("\n\n")[0])
-    assert facts["result_pct"] == {"today_pct": 0.0, "drawdown_pct": 0.0, "since_start_pct": 0.0}
+    assert facts["our_result"] == "+0.00% since the start, +0.00% today (UTC), 0.00% below the peak"
     assert "envelope" not in facts and "setup_meanings" not in facts  # moved to the system prompt
 
 

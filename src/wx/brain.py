@@ -377,7 +377,9 @@ def build_graph(b: Brain, checkpointer=None):
             "now_utc": time.strftime("%Y-%m-%d %H:%M", time.gmtime(state["now"])),
             "hours_left": state["hours_left"], "profile": state["profile"], "account_tmn": state["account"],
             "positions": state["positions"],
-            "result_pct": {k: view[k] for k in ("today_pct", "drawdown_pct", "since_start_pct")},
+            # written out in words: the model once read drawdown_pct 0.25 as 25% (F75)
+            "our_result": f"{view['since_start_pct']:+.2f}% since the start, {view['today_pct']:+.2f}% today (UTC), "
+                          f"{view['drawdown_pct']:.2f}% below the peak",
             "buys_last_24h": view["buys_last_24h"],
             "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
                                                else OVERVIEW),
