@@ -59,6 +59,7 @@ from wx.setups import SETUPS
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 RECENT_CYCLES = 8  # cycle summaries the agent sees from its short-term memory
+RECENT_CYCLES_WITH_NOTE = 3  # fewer when the owner gave instructions: old notes repeat older rules (F80)
 MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
 TOKEN_BUDGET = 12_000_000  # AI tokens a UTC day (sprint decides every 5 minutes). Above it, no debate
@@ -270,8 +271,9 @@ edge after costs. The hard limits and the halts after losses stay.
 The envelope's limits apply to new buys only. A position bought under an older, larger limit stays as it is:
 never sell a position only to fit a limit, because a sell closes all of it and pays the costs (F74).
 
-Follow `owner_instructions` when they are present: the owner of the account wrote them for now. Where they
-differ from a playbook, the evidence notes or your own notes from earlier cycles, the owner's instructions win.
+Follow `owner_instructions_do_these_first` when present: the owner of the account wrote them for now. Do every
+action they ask for in this cycle (for example a sell they name), and say in "approach" how you followed them.
+Where they differ from a playbook, the evidence notes or your own notes from earlier cycles, the owner wins.
 Before any buy, read `move_x_cost` in the overview: the market's typical 24-hour move divided by its round-trip
 cost. Near 1, a market barely moves more in a day than it costs to buy and sell, so even a good call earns
 nothing (TRXTMN, 1.1, sat flat through a night when coins rose 1.6%). Prefer markets around 3 or more; under 2 a
@@ -396,7 +398,10 @@ def build_graph(b: Brain, checkpointer=None):
         prompt = analyst_prompt(state["profile"].get("skill", ""), b.env)
         view = portfolio_view(state["account"], state["positions"], state["hours_left"], b.executor.ledger(),
                               state["now"], b.env)
+        note = b.owner_note()
         facts = {
+            # the owner's note first, where the model weighs it most; it lost to old notes when it came last (F80)
+            "owner_instructions_do_these_first": note or None,
             "now_utc": time.strftime("%Y-%m-%d %H:%M", time.gmtime(state["now"])),
             "hours_left": state["hours_left"], "profile": state["profile"], "account_tmn": state["account"],
             "positions": state["positions"],
@@ -406,10 +411,9 @@ def build_graph(b: Brain, checkpointer=None):
             "buys_last_24h": view["buys_last_24h"],
             "markets_overview": overview_table(with_move_x_cost(table),
                                                FAST_OVERVIEW if state["profile"]["name"] == "sprint" else OVERVIEW),
-            "owner_instructions": b.owner_note() or None,
             "markets_closing_utc": {s: time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
                                     for s, t in b.market_closes().items()},
-            "your_last_cycles": state.get("recent", [])[-RECENT_CYCLES:],
+            "your_last_cycles": state.get("recent", [])[-(RECENT_CYCLES_WITH_NOTE if note else RECENT_CYCLES):],
             "lessons_losses_first": recall(b.store, None, AUTO_LESSONS),
             "your_thesis_per_position": state.get("theses", {}),
             "feature_names": "explain_features gives the meaning of any feature",
