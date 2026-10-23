@@ -147,3 +147,13 @@ def test_the_code_version_is_read_once(monkeypatch):
     calls = []
     monkeypatch.setattr(decide, "_read_version", lambda: calls.append(1) or f"0.1.0+v{len(calls)}")
     assert decide.code_version() == decide.code_version() == "0.1.0+v1" and len(calls) == 1
+
+
+def test_a_reserve_stays_free_until_the_last_hours():
+    from wx.risk import ENVELOPE, Account, size_plan
+    acc = Account(5_000_000, 1_000_000, 4_000_000, 5_000_000, 5_000_000)  # 80% in coins
+    f = {"price": 100.0, "spread_pct": 0.1, "data_age_min": 1, "round_trip_cost_pct": 0.6}
+    early = size_plan(f, acc, 1.5, 6.0, ENVELOPE, hours_left=7)
+    late = size_plan(f, acc, 1.5, 6.0, ENVELOPE, hours_left=2)
+    assert early.rule == "max in coins" and early.tmn == round(0.85 * 5_000_000 - 4_000_000)
+    assert late.tmn > early.tmn

@@ -208,6 +208,8 @@ class Envelope:
     max_stop_pct: float = 15.0
     max_position: float = 0.20  # at most this share of equity in one coin: several positions at once (D54)
     max_exposure: float = 0.95  # and at most this share in coins together: the whole balance can work (D61)
+    reserve_exposure: float = 0.85  # until the last reserve_hours, new buys stop at this share: money stays free
+    reserve_hours: float = 3.0  # for new chances (D63)
     daily_loss: float = 0.04  # no new buys after losing this much today
     max_drawdown: float = 0.10  # no new buys while this far below the peak (the halt ends after halt_hours)
     halt_hours: float = 24
@@ -257,7 +259,8 @@ def size_plan(features: dict, account: Account, risk_pct: float, stop_pct: float
     caps = {
         "agent's risk": risk_pct / 100 * account.equity / ((stop_pct + cost) / 100),
         "max in one coin": env.max_position * account.equity,
-        "max in coins": env.max_exposure * account.equity - account.exposure,
+        "max in coins": (env.max_exposure if hours_left is not None and hours_left <= env.reserve_hours
+                         else env.reserve_exposure) * account.equity - account.exposure,
         "free cash": account.cash,
     }
     if symbol in CASH_LIKE:  # cash, not a coin: its own cap, outside the coin limits
