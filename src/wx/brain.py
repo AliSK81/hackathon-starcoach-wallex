@@ -336,7 +336,7 @@ Reply with one JSON object: {{"cases": [{{"symbol": "...", "argument": "<at most
 OFFICER = """You are the judge of a trading bot's buys. The trader proposed the buys below, each with a plan, and a
 bull and a bear analyst argued each one. Weigh the arguments against the data and the evidence. For each buy:
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
-data. The owner wants 60 to 80% of equity working in several moving coins for the last hours (see
+data. The owner wants up to 95% of equity working in several moving coins, built up over time (see
 owner_instructions). APPROVE by default. REDUCE or REJECT only for a concrete risk beyond the coin's usual swings:
 no buyers near the price, a spread over 1%, a stop the market can't respect, overbought and stretched (rsi14 over
 70 with bb_z_20 over 2: wait for a pullback), no recent volume for a momentum buy (vol_ratio_5m near 0), no trend
