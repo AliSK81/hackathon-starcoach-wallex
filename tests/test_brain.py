@@ -319,10 +319,12 @@ def test_market_closes_file(tmp_path):
     assert market_closes(tmp_path) == {}
 
 
-def test_no_buy_in_a_market_that_moves_too_little_for_its_cost():
-    b, _ = brain([plan([buy()])], {"SOLTMN": market(typical_24h_move_pct=1.0, round_trip_cost_pct=0.9)})
-    state = build_graph(b).invoke({})
-    assert not b.executor.bought and state["decisions"][0]["verdict"]["rule"] == "moves too little"
-    b, _ = brain([plan([buy()])], {"SOLTMN": market(typical_24h_move_pct=3.0, round_trip_cost_pct=0.7)})
+def test_the_agent_sees_move_x_cost_and_decides_itself():
+    b, _ = brain([], {"SOLTMN": market(typical_24h_move_pct=1.0, round_trip_cost_pct=0.9)})
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(plan([buy()])))])
+    SEEN.clear()
     build_graph(b).invoke({})
-    assert b.executor.bought
+    facts = json.loads(SEEN[0][1].content.split("\n\n")[0])
+    overview = facts["markets_overview"]
+    assert overview["rows"][0][overview["columns"].index("move_x_cost")] == 1.1
+    assert b.executor.bought  # no rule in code: the agent's own judgment

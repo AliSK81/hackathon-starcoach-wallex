@@ -54,11 +54,10 @@ from wx.closures import NO_BUY_MINUTES, closing
 from wx.features import FEATURES
 from wx.horizon import Profile, profile
 from wx.llm import LLMError, parse_json
-from wx.risk import CASH_LIKE, ENVELOPE, Account, Envelope, clamp, size_plan
+from wx.risk import ENVELOPE, Account, Envelope, clamp, size_plan
 from wx.setups import SETUPS
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
-MIN_MOVE_X_COST = 2.0  # a market must usually move this many times its round trip in a day (D56)
 RECENT_CYCLES = 8  # cycle summaries the agent sees from its short-term memory
 MAX_TOOL_ROUNDS = 12
 SAFE_AFTER = 3  # failed analyst cycles in a row before safe mode
@@ -73,6 +72,15 @@ KEEP_TOOLS = 4
 def compact(value) -> str:
     """JSON without spaces: the model's window is small."""
     return json.dumps(value, default=str, separators=(",", ":"), ensure_ascii=False)
+
+
+def with_move_x_cost(table: dict) -> dict:
+    """Each market's typical 24-hour move divided by its round-trip cost: can it move enough to pay for a trade?"""
+    out = {}
+    for s, f in table.items():
+        move, cost = f.get("typical_24h_move_pct"), f.get("round_trip_cost_pct")
+        out[s] = {**f, "move_x_cost": round(move / cost, 1) if move and cost else None}
+    return out
 
 
 def overview_table(table: dict, columns: tuple | None = None) -> dict:
@@ -139,11 +147,11 @@ EVIDENCE = {
 }
 
 # Features shown per market in the overview. The rest are one tool call away.
-OVERVIEW = ("price", "spread_pct", "ret_1h_pct", "ret_24h_pct", "typical_24h_move_pct", "ema20_vs_ema50_pct",
-            "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "atr14_pct", "regime",
+OVERVIEW = ("price", "move_x_cost", "spread_pct", "ret_1h_pct", "ret_24h_pct", "typical_24h_move_pct",
+            "ema20_vs_ema50_pct", "trend_4h_pct", "rsi14", "rsi14_15m", "bb_z_20", "adx14", "atr14_pct", "regime",
             "zero_volume_hours_24", "setups")
 # In sprint the overview leads with the fast features (features.fast_features).
-FAST_OVERVIEW = ("price", "spread_pct", "ret_5m_pct", "ret_30m_pct", "ret_1h_pct", "ret_24h_pct",
+FAST_OVERVIEW = ("price", "move_x_cost", "spread_pct", "ret_5m_pct", "ret_30m_pct", "ret_1h_pct", "ret_24h_pct",
                  "ema9_vs_ema21_5m_pct", "rsi14_5m", "bb_z_5m", "atr14_5m_pct", "vol_ratio_5m", "vwap_4h_dev_pct",
                  "range_1h_pct", "pos_in_1h_range", "ema20_vs_ema50_pct", "regime")
 
@@ -263,8 +271,10 @@ The envelope's limits apply to new buys only. A position bought under an older, 
 never sell a position only to fit a limit, because a sell closes all of it and pays the costs (F74).
 
 Follow `owner_instructions` when they are present: the owner of the account wrote them for now.
-Code refuses a buy in a market whose typical_24h_move_pct is under 2 times its round_trip_cost_pct: it cannot
-move enough to pay for itself (D56). Pick markets that move: compare those two numbers first.
+Before any buy, read `move_x_cost` in the overview: the market's typical 24-hour move divided by its round-trip
+cost. Near 1, a market barely moves more in a day than it costs to buy and sell, so even a good call earns
+nothing (TRXTMN, 1.1, sat flat through a night when coins rose 1.6%). Prefer markets around 3 or more; under 2 a
+trade needs a very strong reason. This is your judgment to make, not a rule in code (D56).
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
 code refuses the buy and sells what we hold there before the close.
 
@@ -387,8 +397,8 @@ def build_graph(b: Brain, checkpointer=None):
             "our_result": f"{view['since_start_pct']:+.2f}% since the start, {view['today_pct']:+.2f}% today (UTC), "
                           f"{view['drawdown_pct']:.2f}% below the peak",
             "buys_last_24h": view["buys_last_24h"],
-            "markets_overview": overview_table(table, FAST_OVERVIEW if state["profile"]["name"] == "sprint"
-                                               else OVERVIEW),
+            "markets_overview": overview_table(with_move_x_cost(table),
+                                               FAST_OVERVIEW if state["profile"]["name"] == "sprint" else OVERVIEW),
             "owner_instructions": b.owner_note() or None,
             "markets_closing_utc": {s: time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
                                     for s, t in b.market_closes().items()},
@@ -475,12 +485,6 @@ def build_graph(b: Brain, checkpointer=None):
                 if d["action"] != "BUY":
                     continue
                 f = table[d["symbol"]]
-                move, cost = f.get("typical_24h_move_pct"), f.get("round_trip_cost_pct")
-                if move and cost and move < MIN_MOVE_X_COST * cost and d["symbol"] not in CASH_LIKE:
-                    d["verdict"] = {"tmn": 0, "rule": "moves too little",
-                                    "reason": f"rejected: it moves {move}% a day, under {MIN_MOVE_X_COST}x its "
-                                              f"{cost}% round trip (D56)"}
-                    continue
                 if closing(b.market_closes(), d["symbol"], now, NO_BUY_MINUTES):
                     d["verdict"] = {"tmn": 0, "rule": "market closes",
                                     "reason": "rejected: Wallex closes this market soon, we could not sell it"}
