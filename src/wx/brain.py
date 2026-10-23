@@ -284,6 +284,9 @@ Reply with one JSON object and nothing else, in exactly this format:
 {format}
 
 The hard limits code keeps (envelope): {envelope}
+Units in the envelope: max_position, max_exposure, daily_loss, max_drawdown and book_share are fractions of equity
+(0.1 means 10%); names ending in _pct are percents. Our real result is in `our_result`, in words: trust it over
+any number in your last cycles' notes (F75).
 Setups (names the code knows): {setups}
 Evidence from our tests on the past (get_evidence gives the same): {evidence}
 {skill_texts}"""
