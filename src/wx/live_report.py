@@ -48,6 +48,21 @@ def live_trades(data_dir: Path) -> list[dict]:
     return out
 
 
+def real_net(x: dict) -> float | None:
+    """The result counting the coin left after the sell (too small to sell, still in the account) at the exit
+    price. The book's net_pct counts it as lost. Without a saved exit price, it is estimated from the proceeds."""
+    last, bought = x["last"], x["bought"]
+    if last.get("status") != "closed" or not last.get("cost_tmn"):
+        return None
+    left = float(last.get("qty") or 0)
+    price = last.get("exit_price")
+    if not price and bought and left:
+        sold = float(bought.get("qty") or 0) - left
+        price = last["proceeds_tmn"] / 0.997 / sold if sold > 0 else 0
+    value = left * (price or 0) * 0.997
+    return round(((last["proceeds_tmn"] + value) / last["cost_tmn"] - 1) * 100, 3)
+
+
 def _plan(d: dict, last: dict) -> str:
     target = d.get("target_pct") or last.get("target_pct")
     return (f"risk {d.get('risk_pct', '-')}% of equity, stop {d.get('stop_pct', last.get('stop_pct'))}% under the "
@@ -59,7 +74,7 @@ def _summary(trades: list[dict], cycles: list[dict]) -> list[str]:
     acc = next((r.get("account") for r in reversed(cycles) if r.get("account")), None) or {}
     equity = acc.get("equity")
     closed = [x for x in trades if x["last"]["status"] == "closed"]
-    nets = [x["last"]["net_pct"] for x in closed if x["last"].get("net_pct") is not None]
+    nets = [r for r in (real_net(x) for x in closed) if r is not None]
     active = [x for x in trades if x["last"]["status"] in ("buying", "open", "selling")]
     cancelled = sum(1 for x in trades if x["last"]["status"] == "cancelled")
     dust = [f"{x['last']['qty']} {x['symbol'][:-3]}" for x in closed if float(x["last"].get("qty") or 0) > 0]
@@ -72,7 +87,8 @@ def _summary(trades: list[dict], cycles: list[dict]) -> list[str]:
         f"| Return | {(equity / START_TMN - 1) * 100:+.2f}% |" if equity else "| Return | - |",
         f"| Decision cycles | {len(cycles)}, each one logged, also those with no trade |",
         f"| Buy orders | {len(trades)}: {len(closed)} closed, {len(active)} active, {cancelled} cancelled unfilled |",
-        (f"| Closed trades | {len(nets)}, {sum(n > 0 for n in nets)} won, average {sum(nets) / len(nets):+.2f}% |"
+        (f"| Closed trades (counting coin left after the sell) | {len(nets)}, {sum(n > 0 for n in nets)} won, "
+         f"average {sum(nets) / len(nets):+.2f}% |"
          if nets else "| Closed trades | none yet |"),
         f"| Coin left after sells (below the minimum order) | {', '.join(dust) or 'none'} |",
         f"| Code versions (git commit) | {', '.join(versions) or '-'} |",
@@ -83,7 +99,8 @@ def _detail(i: int, x: dict) -> list[str]:
     last, d, placed, bought = x["last"], x["decision"], x["placed"], x["bought"]
     verdict = d.get("verdict") or {}
     nums = ", ".join(f"{k} {v}" for k, v in x["numbers"].items())
-    result = f", {last['net_pct']:+.2f}%" if last.get("net_pct") is not None else ""
+    real = real_net(x)
+    result = f", {real:+.2f}%" if real is not None else ""
     if bought:
         buy = (f"limit {placed.get('price', '-')} for {placed.get('quantity', '-')}; filled at "
                f"{_num(bought.get('entry'))}, got {bought.get('qty')} after the fee, paid "
@@ -136,16 +153,18 @@ def live_report(data_dir: Path, now: int | None = None) -> str:
         "## Trades",
         "",
         "| # | Decided (UTC) | Market | Signal seen by code | AI strategy | Size TMN | Status | Entry | Exit | "
-        "Exit reason | Result |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "Exit reason | Result | Result with coin left |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for i, x in enumerate(trades, 1):
         last, d = x["last"], x["decision"]
         result = f"{last['net_pct']:+.2f}%" if last.get("net_pct") is not None else "-"
+        real = real_net(x)
         lines.append(f"| {i} | {_when(x['t'])} | {x['symbol']} | {_cell(', '.join(x['signals']))} | "
                      f"{_cell(d.get('strategy') or x['placed'].get('setup'))} | {_num(x['placed'].get('tmn'))} | "
                      f"{last['status']} | {_num(last.get('entry'))} | {_num(last.get('exit_price'))} | "
-                     f"{_cell(last.get('sell_reason'))[:80]} | {result} |")
+                     f"{_cell(last.get('sell_reason'))[:80]} | {result} | "
+                     f"{f'{real:+.2f}%' if real is not None else '-'} |")
     lines += ["", "## Each trade", ""]
     for i, x in enumerate(trades, 1):
         lines += _detail(i, x)

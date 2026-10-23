@@ -71,6 +71,8 @@ def test_the_live_report_explains_each_trade(tmp_path):
     (live / "decisions" / "d.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
     text = live_report(tmp_path, now=T0 + 7300)
     assert "| Return | +0.10% |" in text and "1 won, average +0.56%" in text and "0.5 SOL" in text
+    from wx.live_report import live_trades, real_net
+    assert real_net(live_trades(tmp_path)[0]) == round((905_000 + 0.5 * 101 * 0.997) / 900_000 * 100 - 100, 3)
     assert "Signal seen by code:** stretched_dip. Numbers: rsi14 27.0, bb_z_20 -2.6" in text
     assert "Reason: deep dip" in text and "Judge (AI):** fine" in text and "at 101" in text
     assert "`0.1.0+abc`" in text and "buy placed -> bought -> closed" in text
