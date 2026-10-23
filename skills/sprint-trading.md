@@ -26,3 +26,27 @@ these signals catch are smaller. Many quick trades add up to a large loss.
 - Maker entries save fees but may not fill (they wait 10 minutes in sprint). Taker only when the move is starting now.
 - Sell quickly when the reason is gone. A small loss is fine; a loss that grows into the end is not.
 - With an hour or less left, only sell. Everything is sold 30 minutes before the end.
+
+## Strategy by time left (F81, F79, F78)
+Tested on 17 Wallex TMN coins, about 120 days, average per trade after costs (taker 0.75%; maker-in 0.55%):
+
+| Strategy | 1 h hold | 3 h hold | 6 h hold |
+|---|---|---|---|
+| Deep dip: rsi14 under 30 and ret_24h under -5% | -0.49% | -0.15% (maker +0.05%) | +0.05% (maker +0.25%) |
+| Reversal: the coins that fell most in the last hour | -0.55% | -0.42% | -0.30% |
+| Reversal: volatile coins that fell most in 24 h | -0.65% | -0.53% | -0.39% |
+| The whole market | -0.71% | -0.64% | -0.53% |
+| Momentum: the 24 h winners | -0.75% | -0.67% | -0.56% |
+| Chasing a coin up 3% in the last hour | -0.74% | -0.82% | -0.75% |
+
+The order held in both halves and agrees with research on crypto (short-term reversal, strongest in smaller coins;
+Zaremba et al. 2021) and with the live night of 2026-10-22: volatile coins that had fallen 4-9% bounced most, coins
+that had risen most did worst (F79). Costs decide short trades: the shorter the hold, the more the fee wins.
+
+Map it to the time left:
+- **More than 6 hours left:** buy deep dips and volatile coins that have fallen (low rsi14, low zscore_48h, high
+  move_x_cost), maker when there is time, and hold them hours, not minutes. Several at once.
+- **3 to 6 hours left:** only clear deep dips, maker only. Keep good positions; do not churn.
+- **Under 3 hours left:** no new buys: every strategy above lost at holds this short. Keep or cut what you hold.
+- **Last hour:** only sell. Everything is sold 30 minutes before the end.
+At every horizon, buying what already rose most was the worst choice. Use it only with a very strong, specific reason.
