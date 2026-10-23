@@ -352,6 +352,10 @@ Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" 
 EVIDENCE_NOTE = "\nEvidence from our tests on the past: " + compact(EVIDENCE)
 
 REFLECT = """You review closed trades of a trading bot, to write lessons for its future self.
+Each trade has `buy_thesis` (why and how it was bought: strategy, reason, plan) and `sell_reason` (why it was sold).
+Judge the buy and the sell separately: was the buy reason sound, and did the sell follow the plan or a mistake?
+`net_pct_with_left_coin` counts coin left over after the sell (too small to sell) at the exit price; use it for
+the real result. Use only field names and numbers that appear in the data; never invent a field.
 Read the skill below, then reply with one JSON object:
 {"lessons": [{"symbol": "...", "setup": "...", "lesson": "<at most 300 characters>"}]}
 
@@ -536,10 +540,17 @@ def build_graph(b: Brain, checkpointer=None):
         if not closed:
             return {}
         lessons, problems = [], []
+        # The whole story of each trade: why and how it was bought (its thesis), and separately why it was sold.
+        # With only the result and the sell reason, the lessons mixed the two up and invented fields (F85).
+        story = []
+        for t in closed:
+            thesis = (b.store.get(("theses",), t["symbol"]) or _Empty).value or {}
+            story.append({**{k: v for k, v in t.items() if k != "reason"}, "sell_reason": t.get("reason"),
+                          "buy_thesis": thesis or "not saved"})
         try:
             reply = b.llm.bind(response_format={"type": "json_object"}).invoke(
                 [SystemMessage(REFLECT + read_skill_text("post-trade-review")),
-                 HumanMessage(json.dumps({"closed_trades": closed, "past_lessons": recall(b.store, None, 10)},
+                 HumanMessage(json.dumps({"closed_trades": story, "past_lessons": recall(b.store, None, 10)},
                                          default=str))])
             lessons = parse_json(text_of(reply)).get("lessons", [])
         except Exception as e:  # the trades are still stored below, without a lesson

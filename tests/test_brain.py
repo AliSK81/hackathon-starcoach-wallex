@@ -343,3 +343,18 @@ def test_code_fetches_the_book_and_candles_for_every_proposed_buy():
     assert asked == ["SOLTMN"] and set(state["checks"]["SOLTMN"]) == {"5m", "15m"}
     judge = next(m for m in SEEN if "judge of a trading bot" in m[0].content)
     assert '"candles"' in judge[1].content and '"books"' in judge[1].content
+
+
+def test_lessons_see_the_buy_thesis_and_the_sell_reason_apart():
+    ex = FakeExecutor(positions={"SOLTMN": {"setup": "capitulation"}})
+    b, _ = brain([], {"SOLTMN": market()}, executor=ex)
+    b.store.put(("theses",), "SOLTMN", {"strategy": "capitulation", "reason": "deep dip"})
+    sells = plan(sells=[{"symbol": "SOLTMN", "reason": "move failed"}])
+    b.llm = RecordingLLM(responses=[AIMessage(json.dumps(sells)),
+                                    AIMessage(json.dumps({"lessons": [{"symbol": "SOLTMN", "lesson": "ok"}]}))])
+    SEEN.clear()
+    build_graph(b).invoke({})
+    reflect = next(m for m in SEEN if "review closed trades" in m[0].content)
+    trade = json.loads(reflect[1].content)["closed_trades"][0]
+    assert trade["buy_thesis"]["reason"] == "deep dip" and trade["sell_reason"] == "move failed"
+    assert "reason" not in trade and "never invent a field" in reflect[0].content

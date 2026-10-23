@@ -270,8 +270,11 @@ class LiveExecutor:
         p.status, p.exit_t, p.sell_reason = "closed", now, reason
         p.net_pct = round((p.proceeds_tmn / p.cost_tmn - 1) * 100, 3) if p.cost_tmn else None
         self.event(now, "closed", p)
-        view = {"symbol": p.symbol, "setup": p.setup, "net_pct": p.net_pct, "entry": p.entry,
-                "entry_t": p.entry_t, "exit_t": now, "placed_t": p.t, "reason": reason}
+        left = float(p.qty or 0) * (p.exit_price or 0) * (1 - 0.003)  # coin left after the sell, too small to sell
+        real = round(((p.proceeds_tmn + left) / p.cost_tmn - 1) * 100, 3) if p.cost_tmn else None
+        view = {"symbol": p.symbol, "setup": p.setup, "net_pct": p.net_pct, "net_pct_with_left_coin": real,
+                "entry": p.entry, "exit_price": p.exit_price, "entry_t": p.entry_t, "exit_t": now, "placed_t": p.t,
+                "reason": reason}
         self.unreported.append(view)
         return view
 
