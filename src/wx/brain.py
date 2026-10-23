@@ -333,8 +333,11 @@ bull and a bear analyst argued each one. Weigh the arguments against the data an
 APPROVE it, REDUCE its risk_pct (give the new, lower value), or REJECT it. Reject only for a concrete reason in the
 data. The owner wants 60 to 80% of equity working in several moving coins for the last hours (see
 owner_instructions). APPROVE by default. REDUCE or REJECT only for a concrete risk beyond the coin's usual swings:
-no buyers near the price, a spread over 1%, a stop the market can't respect. Never cut a buy only for weak
-5-minute momentum or a small edge: every buy has those, and cutting all of them left the account in cash (F76).
+no buyers near the price, a spread over 1%, a stop the market can't respect, overbought and stretched (rsi14 over
+70 with bb_z_20 over 2: wait for a pullback), no recent volume for a momentum buy (vol_ratio_5m near 0), no trend
+for a trend buy (regime range and adx14 under 20), or a number in the reason that is not in the data. Never cut a
+buy only for weak 5-minute momentum or a small edge: every buy has those, and cutting all of them left the account
+in cash (F76). Always give a reason, also when you approve.
 Reply with one JSON object: {"reviews": [{"symbol": "...", "verdict": "APPROVE" | "REDUCE" | "REJECT",
 "risk_pct": <only for REDUCE>, "reason": "..."}], "note": "<one sentence>"}"""
 
