@@ -151,7 +151,10 @@ class LiveExecutor:
                                  "pnl_pct": round((price / p.entry - 1) * 100, 2),
                                  "hours_held": round((now - (p.entry_t or p.t)) / 3600, 1),
                                  "stop_pct": round(p.stop_pct, 2), "target_pct": p.target_pct,
-                                 "max_hours": p.max_hours, "trend_exit": p.trend_exit}
+                                 "max_hours": p.max_hours, "trend_exit": p.trend_exit,
+                                 # code does not sell at the time limit; the agent decides (D62)
+                                 "past_time_limit": bool(p.max_hours)
+                                 and now - (p.entry_t or p.t) >= p.max_hours * 3600}
             else:
                 out[p.symbol] = {"setup": p.setup, "status": p.status, "tmn": round(p.tmn)}
         return out
@@ -304,9 +307,8 @@ class LiveExecutor:
                         closed += self.send_sell(p, now, "stop")
                     elif f and p.target_pct and f["price"] >= p.entry * (1 + p.target_pct / 100):
                         closed += self.send_sell(p, now, "target")
-                    elif f and (p.max_hours or p.trend_exit) and \
-                            exit_rule(p.max_hours, p.trend_exit and p.trend_up_seen)(f, hours):
-                        closed += self.send_sell(p, now, "plan exit (time or trend)")
+                    elif f and p.trend_exit and p.trend_up_seen and exit_rule(0, True)(f, hours):
+                        closed += self.send_sell(p, now, "plan exit (trend turned)")
                     elif f and p.setup in SETUPS and not (p.max_hours or p.trend_exit) \
                             and SETUPS[p.setup].exit(f, hours):
                         closed += self.send_sell(p, now, "setup exit: " + SETUPS[p.setup].exit_meaning)
@@ -334,8 +336,7 @@ class LiveExecutor:
                         closed += self.send_sell(p, now, "stop")
                     elif p.target_pct and float(bid) >= p.entry * (1 + p.target_pct / 100):
                         closed += self.send_sell(p, now, "target")
-                    elif p.max_hours and now - (p.entry_t or p.t) >= p.max_hours * 3600:
-                        closed += self.send_sell(p, now, "time limit")
+                    # no sale at the time limit: the agent sees past_time_limit and decides (D62)
                 elif p.status == "selling":
                     closed += self.check_sell(p, self.trader.get(p.sell_id), now)
                 elif p.status == "buying" and now >= p.t + p.fill_minutes * 60:

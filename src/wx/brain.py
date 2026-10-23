@@ -282,6 +282,9 @@ Before any buy, read `move_x_cost` in the overview: the market's typical 24-hour
 cost. Near 1, a market barely moves more in a day than it costs to buy and sell, so even a good call earns
 nothing (TRXTMN, 1.1, sat flat through a night when coins rose 1.6%). Prefer markets around 3 or more; under 2 a
 trade needs a very strong reason. This is your judgment to make, not a rule in code (D56).
+A position with `past_time_limit` true has run past the hold you planned. Code does not sell it: decide each cycle
+whether its reason still holds (keep it) or not (sell it). Do not sell a good coin at its time limit only to buy it
+back soon after: that pays about 0.6% for nothing (D62).
 Never propose a buy in a market listed in `markets_closing_utc`: Wallex closes it (or closed it) at that time, so
 code refuses the buy and sells what we hold there before the close.
 

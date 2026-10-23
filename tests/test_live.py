@@ -199,7 +199,7 @@ def test_the_trend_exit_waits_for_a_real_turn(ex):
     ex.sync({"SOLTMN": f(ema20_vs_ema50_pct=0.4)}, NOW + 1800)
     assert p.status == "open" and p.trend_up_seen
     ex.sync({"SOLTMN": down}, NOW + 2700)
-    assert p.status in ("selling", "closed") and p.sell_reason == "plan exit (time or trend)"
+    assert p.status in ("selling", "closed") and p.sell_reason == "plan exit (trend turned)"
 
 
 def test_the_guard_books_a_fill_within_the_minute(ex):
@@ -210,3 +210,14 @@ def test_the_guard_books_a_fill_within_the_minute(ex):
     ex.trader.fill(p.buy_id)
     ex.guard(NOW + 120)
     assert p.status == "open" and p.entry  # booked by the guard, before the next cycle: the stop is live
+
+
+def test_the_time_limit_is_the_agents_call_not_a_sale(ex):
+    ex.buy("SOLTMN", "x", f(), Verdict(500_000, 4.0, "approved", "ok"), NOW, {"max_hours": 1})
+    p = ex.positions_[0]
+    ex.trader.fill(p.buy_id)
+    ex.sync({"SOLTMN": f()}, NOW + 60)
+    ex.guard(NOW + 2 * 3600)
+    ex.sync({"SOLTMN": f()}, NOW + 2 * 3600)
+    assert p.status == "open"  # past its 1-hour limit, still held
+    assert ex.positions({"SOLTMN": f()}, NOW + 2 * 3600)["SOLTMN"]["past_time_limit"] is True
