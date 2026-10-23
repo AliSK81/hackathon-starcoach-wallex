@@ -560,8 +560,8 @@ def build_graph(b: Brain, checkpointer=None):
 
     def journal(state: State) -> State:
         record = {k: state.get(k) for k in ("cycle", "now", "hours_left", "account", "positions", "micro", "plan",
-                                             "review", "decisions", "orders", "closed", "lessons", "ai", "problems", "checks",
-                                             "bull", "bear", "theses", "fail_streak", "tokens_today")}
+                                             "review", "decisions", "orders", "closed", "lessons", "ai", "problems",
+                                             "checks", "bull", "bear", "theses", "fail_streak", "tokens_today")}
         record.update(decided_at=state.get("now"), role="brain", markets=state.get("table"),
                       executor=b.executor.kind)
         b.log(record)
