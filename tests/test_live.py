@@ -221,3 +221,11 @@ def test_the_time_limit_is_the_agents_call_not_a_sale(ex):
     ex.sync({"SOLTMN": f()}, NOW + 2 * 3600)
     assert p.status == "open"  # past its 1-hour limit, still held
     assert ex.positions({"SOLTMN": f()}, NOW + 2 * 3600)["SOLTMN"]["past_time_limit"] is True
+
+
+def test_a_position_is_valued_at_the_bid_not_the_middle(ex):
+    ex.buy("SOLTMN", "x", f(), Verdict(500_000, 4.0, "approved", "ok"), NOW)
+    ex.trader.fill(ex.positions_[0].buy_id)
+    ex.sync({"SOLTMN": f()}, NOW + 60)
+    held = ex.positions({"SOLTMN": f(spread_pct=6.0)}, NOW + 120)["SOLTMN"]
+    assert held["pnl_pct"] == pytest.approx(-3.0, abs=0.01) and held["spread_pct"] == 6.0

@@ -145,10 +145,13 @@ class LiveExecutor:
     def positions(self, table: dict[str, dict], now: int) -> dict[str, dict]:
         out = {}
         for p in self.active():
-            price = (table.get(p.symbol) or {}).get("price")
+            f = table.get(p.symbol) or {}
+            price = f.get("price")
             if p.status == "open" and p.entry and price:
+                spread = f.get("spread_pct") or 0.0
+                price *= 1 - spread / 200  # the bid: what a sell gets, not the middle (F88)
                 out[p.symbol] = {"setup": p.setup, "entry": p.entry, "value_tmn": int(float(p.qty) * price),
-                                 "pnl_pct": round((price / p.entry - 1) * 100, 2),
+                                 "pnl_pct": round((price / p.entry - 1) * 100, 2), "spread_pct": round(spread, 2),
                                  "hours_held": round((now - (p.entry_t or p.t)) / 3600, 1),
                                  "stop_pct": round(p.stop_pct, 2), "target_pct": p.target_pct,
                                  "max_hours": p.max_hours, "trend_exit": p.trend_exit,
